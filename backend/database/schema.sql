@@ -1,3 +1,6 @@
+-- คู่มืออ่าน: CREATE TABLE กำหนดโครงสร้าง; CHECK/FK/UNIQUE ตรวจความถูกต้อง; CREATE FUNCTION คือกฎที่ Backend เรียก
+-- ไฟล์นี้ใช้ติดตั้งใน DB ว่างครั้งเดียว ไม่ได้ถูกรันใหม่ทุกครั้งที่มีคนเพิ่มสินค้า
+-- คอมเมนต์ไม่เปลี่ยนข้อมูลจริง และไม่ได้แยก Service/Repository เป็นไฟล์ใหม่
 -- Owl Pai Lei compact database: 31 tables. Install once in an EMPTY database.
 BEGIN;
 
@@ -106,6 +109,7 @@ CREATE TABLE platform_settings (
   note TEXT NOT NULL
 );
 
+-- จุดเน้น: ข้อเสนอขายแยกจากสินค้าแค็ตตาล็อก; หลาย Seller ใช้ variant เดียวกันได้
 CREATE TABLE seller_offers (
   offer_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   seller_id BIGINT NOT NULL REFERENCES users(user_id),
@@ -124,6 +128,7 @@ CREATE TABLE seller_offers (
   CHECK ((review_decision IS NULL AND reviewed_by IS NULL AND reviewed_at IS NULL) OR
     (review_decision IS NOT NULL AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL)),
   CHECK (review_decision IS DISTINCT FROM 'reject' OR length(trim(review_reason))>0),
+  -- AC มือสอง: หนึ่งชิ้นต่อรายการและต้องระบุตำหนิ; constraint ยังทำงานแม้ข้ามหน้าเว็บ
   CHECK(condition<>'used' OR (available_quantity<=1 AND length(trim(defects))>0))
 );
 CREATE INDEX offers_seller_idx ON seller_offers(seller_id,status);
@@ -399,25 +404,35 @@ CREATE INDEX activity_actor_idx ON activity_logs(actor_id,created_at);
 
 SET search_path TO owl, public;
 
+-- Service/ตัวช่วยใน PostgreSQL: has_role
+-- หน้าที่: ตรวจว่าบัญชียัง active และมีบทบาทที่ระบุ; คืน BOOLEAN ใช้เป็นเงื่อนไขในฟังก์ชันอื่น
 CREATE FUNCTION has_role(p_user BIGINT,p_role TEXT) RETURNS BOOLEAN
 LANGUAGE sql STABLE SET search_path=owl,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM user_roles ur JOIN roles r USING(role_id) JOIN users u USING(user_id)
  WHERE ur.user_id=p_user AND r.name=p_role AND u.status='active');
 $$;
+-- Service/ตัวช่วยใน PostgreSQL: require_role
+-- หน้าที่: เรียก has_role แล้ว RAISE EXCEPTION ถ้าไม่มีสิทธิ์; ทำให้คำสั่งที่กำลังบันทึกหยุดและ transaction ย้อนกลับได้
 CREATE FUNCTION require_role(p_user BIGINT,p_role TEXT) RETURNS VOID
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  IF NOT has_role(p_user,p_role) THEN RAISE EXCEPTION 'Active % role required',p_role; END IF;
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: log_action
+-- หน้าที่: เขียน audit event ลง activity_logs พร้อมผู้ทำ ประเภทงาน และรหัสข้อมูล; ใช้ติดตามว่าใครทำอะไร
 CREATE FUNCTION log_action(p_actor BIGINT,p_action TEXT,p_entity TEXT,p_id BIGINT) RETURNS VOID
 LANGUAGE sql SET search_path=owl,pg_temp AS $$
  INSERT INTO activity_logs(event_source,actor_id,event_type,entity_type,entity_id) VALUES('audit',p_actor,p_action,p_entity,p_id);
 $$;
+-- Service/ตัวช่วยใน PostgreSQL: log_order
+-- หน้าที่: เขียนประวัติสถานะออเดอร์พร้อมผู้ทำและหมายเหตุลง activity_logs
 CREATE FUNCTION log_order(p_order BIGINT,p_status TEXT,p_actor BIGINT,p_note TEXT DEFAULT '') RETURNS VOID
 LANGUAGE sql SET search_path=owl,pg_temp AS $$
  INSERT INTO activity_logs(event_source,order_id,status,actor_id,note) VALUES('order',p_order,p_status,p_actor,p_note);
 $$;
 
+-- Trigger: guard_offer_edit
+-- หน้าที่: Trigger ป้องกัน hard delete และการเปลี่ยนรายละเอียดเมื่อไม่ใช่ pending; ถอนขายได้โดยเก็บประวัติ
 CREATE FUNCTION guard_offer_edit() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Withdraw offers; never hard-delete their history'; END IF;
@@ -430,6 +445,8 @@ BEGIN
  RETURN NEW;
 END; $$;
 CREATE TRIGGER protect_offer BEFORE UPDATE OR DELETE ON seller_offers FOR EACH ROW EXECUTE FUNCTION guard_offer_edit();
+-- Trigger: guard_offer_photo
+-- หน้าที่: Trigger ตรวจเจ้าของรูปและสถานะ offer; หลัง review จะเพิ่ม แก้ ลบ หรือย้ายรูปไม่ได้
 CREATE FUNCTION guard_offer_photo() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE v_offer BIGINT;
 BEGIN
@@ -441,10 +458,14 @@ BEGIN
  IF TG_OP='DELETE' THEN RETURN OLD; END IF; RETURN NEW;
 END; $$;
 CREATE TRIGGER protect_offer_photos BEFORE INSERT OR UPDATE OR DELETE ON assets FOR EACH ROW EXECUTE FUNCTION guard_offer_photo();
+-- Trigger: immutable_record
+-- หน้าที่: Trigger กลางที่ปฏิเสธ UPDATE/DELETE เสมอ ใช้กับข้อมูลสุดท้ายและประวัติที่ต้องเก็บ
 CREATE FUNCTION immutable_record() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN RAISE EXCEPTION 'Final or historical records cannot be edited or deleted'; END; $$;
 CREATE TRIGGER immutable_qc BEFORE UPDATE OR DELETE ON qc_inspections FOR EACH ROW EXECUTE FUNCTION immutable_record();
 
+-- Service/ตัวช่วยใน PostgreSQL: create_offer
+-- หน้าที่: สร้างรายการเสนอขายจากแค็ตตาล็อกที่ active หลังตรวจ Seller; คืน offer_id และบันทึก audit; DEFAULT/CHECK ของตารางกำหนด pending และกฎมือสอง
 CREATE FUNCTION create_offer(p_seller BIGINT,p_variant BIGINT,p_condition TEXT,p_price NUMERIC,
  p_quantity INTEGER,p_defects TEXT DEFAULT '',p_notes TEXT DEFAULT '') RETURNS BIGINT
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
@@ -455,16 +476,20 @@ BEGIN
  IF p_quantity<1 THEN RAISE EXCEPTION 'Quantity must be positive'; END IF;
  IF NOT EXISTS(SELECT 1 FROM product_variants v JOIN products p USING(product_id) WHERE v.variant_id=p_variant AND v.active AND p.active)
  THEN RAISE EXCEPTION 'Choose an existing active Owl catalog variant'; END IF;
+ -- ไม่ต้องส่ง status จาก browser; DEFAULT ของ seller_offers จะกำหนด pending เอง
  INSERT INTO seller_offers(seller_id,variant_id,condition,asking_price,available_quantity,defects,condition_notes)
  VALUES(p_seller,p_variant,p_condition,p_price,p_quantity,p_defects,p_notes) RETURNING offer_id INTO v_id;
  PERFORM log_action(p_seller,'offer_created','seller_offer',v_id);
  RETURN v_id;
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: edit_pending_offer
+-- หน้าที่: แก้เฉพาะรายการของ Seller ผู้เรียกที่ยัง pending; FOR UPDATE ล็อกแถวระหว่างตรวจและบันทึก
 CREATE FUNCTION edit_pending_offer(p_seller BIGINT,p_offer BIGINT,p_price NUMERIC,p_quantity INTEGER,p_defects TEXT,p_notes TEXT DEFAULT '')
 RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE f seller_offers;
 BEGIN
  PERFORM require_role(p_seller,'seller');
+ -- จุดเน้น: ตรวจเจ้าของและล็อกแถวก่อนเช็ก pending/แก้ไข ป้องกันการเขียนชนกัน
  SELECT * INTO f FROM seller_offers WHERE offer_id=p_offer AND seller_id=p_seller FOR UPDATE;
  IF NOT FOUND OR f.status<>'pending' THEN RAISE EXCEPTION 'Only your pending offer can be edited'; END IF;
  IF p_quantity<1 THEN RAISE EXCEPTION 'Quantity must be positive'; END IF;
@@ -472,14 +497,20 @@ BEGIN
  PERFORM log_action(p_seller,'offer_edited','seller_offer',p_offer);
 END; $$;
 
+-- Service/ตัวช่วยใน PostgreSQL: qc_skip_count
+-- หน้าที่: ใช้คะแนน QC เฉลี่ยกำหนดจำนวนรอบที่ถูกข้าม 0-3 รอบ; ยังไม่มีคะแนนใช้ค่าเริ่มต้น 4 จึงไม่ถูกข้าม
 CREATE FUNCTION qc_skip_count(p_seller BIGINT) RETURNS SMALLINT LANGUAGE sql STABLE SET search_path=owl,pg_temp AS $$
  SELECT CASE WHEN coalesce(avg(q.seller_score),4)>=4 THEN 0 WHEN avg(q.seller_score)>=3 THEN 1
  WHEN avg(q.seller_score)>=2 THEN 2 ELSE 3 END::smallint
  FROM qc_inspections q JOIN order_items i USING(order_item_id) WHERE i.seller_id=p_seller;
 $$;
+-- Service/ตัวช่วยใน PostgreSQL: queue_position
+-- หน้าที่: เพิ่มตัวนับแล้วคืนเลขท้ายคิวใหม่; ไม่ใช่การอ่านลำดับรอปัจจุบันของ Seller
 CREATE FUNCTION queue_position(p_group BIGINT) RETURNS BIGINT LANGUAGE sql SET search_path=owl,pg_temp AS $$
  UPDATE queue_groups SET next_position=next_position+1 WHERE group_id=p_group RETURNING next_position;
 $$;
+-- Service/ตัวช่วยใน PostgreSQL: ensure_group
+-- หน้าที่: หา/สร้างคิวแยกตาม variant และสภาพ แล้วล็อกกลุ่มคิว; คืน group_id ให้ขั้นตอนอื่นใช้งาน
 CREATE FUNCTION ensure_group(p_variant BIGINT,p_condition TEXT) RETURNS BIGINT LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE v_id BIGINT;
 BEGIN
@@ -487,6 +518,8 @@ BEGIN
  SELECT group_id INTO v_id FROM queue_groups WHERE variant_id=p_variant AND condition=p_condition FOR UPDATE;
  RETURN v_id;
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: queue_add
+-- หน้าที่: เพิ่มหรือเลื่อนข้อเสนอไปท้ายคิว พร้อมจำนวนรอบที่ต้องข้ามตาม QC และบันทึกเหตุการณ์
 CREATE FUNCTION queue_add(p_group BIGINT,p_offer BIGINT,p_event TEXT DEFAULT 'joined') RETURNS VOID
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE f seller_offers;
@@ -498,6 +531,8 @@ BEGIN
  INSERT INTO activity_logs(event_source,group_id,offer_id,event_type) VALUES('queue',p_group,p_offer,p_event);
 END; $$;
 
+-- Service/ตัวช่วยใน PostgreSQL: advance_queue
+-- หน้าที่: ล็อกกลุ่ม เลื่อนข้อเสนอที่ครบ 24 ชั่วโมง และข้ามตามคะแนน QC; คืน offer_id ที่ได้แสดงหรือ NULL เมื่อไม่มีของ
 CREATE FUNCTION advance_queue(p_group BIGINT,p_now TIMESTAMPTZ DEFAULT now()) RETURNS BIGINT
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE g queue_groups; f seller_offers; e queue_entries; n INTEGER; tries INTEGER;
@@ -527,10 +562,14 @@ BEGIN
  END LOOP;
  RAISE EXCEPTION 'Queue failed to settle';
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: refresh_all_queues
+-- หน้าที่: เรียก advance_queue ให้ทุกกลุ่ม; ไม่ใช่ timer อัตโนมัติ ต้องมีผู้เรียกหรือ scheduler ที่จัดแยก
 CREATE FUNCTION refresh_all_queues() RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE g RECORD;
 BEGIN FOR g IN SELECT group_id FROM queue_groups ORDER BY group_id LOOP PERFORM advance_queue(g.group_id); END LOOP; END; $$;
 
+-- Service/ตัวช่วยใน PostgreSQL: review_offer
+-- หน้าที่: เฉพาะ Admin ตัดสิน pending เป็น approved/rejected; reject ต้องมีเหตุผล; approved เข้าคิวและแจ้ง Seller
 CREATE FUNCTION review_offer(p_admin BIGINT,p_offer BIGINT,p_decision TEXT,p_reason TEXT DEFAULT '') RETURNS VOID
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE f seller_offers; v_group BIGINT;
@@ -549,6 +588,8 @@ BEGIN
  INSERT INTO notifications(user_id,offer_id,type,message) VALUES(f.seller_id,p_offer,'offer_review','Offer review: '||p_decision||'. '||p_reason);
  PERFORM log_action(p_admin,'offer_'||p_decision,'seller_offer',p_offer);
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: withdraw_offer
+-- หน้าที่: ตรวจว่าเป็น offer ของ Seller ผู้เรียก เปลี่ยนเป็น withdrawn นำออกจากคิวและเลื่อนคิวต่อ โดยไม่ลบออเดอร์เก่า
 CREATE FUNCTION withdraw_offer(p_seller BIGINT,p_offer BIGINT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE f seller_offers; v_group BIGINT;
 BEGIN
@@ -565,6 +606,8 @@ BEGIN
  PERFORM log_action(p_seller,'offer_withdrawn','seller_offer',p_offer);
 END; $$;
 
+-- Service/ตัวช่วยใน PostgreSQL: discount_for
+-- หน้าที่: ตรวจช่วงเวลา ยอดขั้นต่ำ โควตา และประวัติใช้คูปอง; คืนส่วนลดที่ใช้ได้ หรือ 0 ถ้าไม่ได้เลือกคูปอง
 CREATE FUNCTION discount_for(p_coupon BIGINT,p_buyer BIGINT,p_subtotal NUMERIC) RETURNS NUMERIC
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE c coupons; d NUMERIC;
@@ -578,6 +621,8 @@ BEGIN
  RETURN least(d,p_subtotal);
 END; $$;
 
+-- Service/ตัวช่วยใน PostgreSQL: checkout
+-- หน้าที่: สร้างออเดอร์หนึ่งชิ้นจากข้อเสนอที่อยู่หัวคิว; ตรวจที่อยู่ของ Buyer ห้ามซื้อของตัวเอง และ snapshot ราคา/รายละเอียด/ที่อยู่; ยังไม่จอง stock
 CREATE FUNCTION checkout(p_buyer BIGINT,p_variant BIGINT,p_condition TEXT,p_address BIGINT,p_coupon BIGINT DEFAULT NULL) RETURNS BIGINT
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE g BIGINT; v_offer BIGINT; f seller_offers; a addresses; cfg platform_settings; v_fee NUMERIC; v_discount NUMERIC; v_order BIGINT; v_product RECORD;
@@ -605,6 +650,8 @@ BEGIN
  RETURN v_order;
 END; $$;
 
+-- Service/ตัวช่วยใน PostgreSQL: confirm_payment
+-- หน้าที่: Admin บันทึกยืนยันยอดชำระที่ตรงออเดอร์; ล็อกคิว/ออเดอร์ ลด stock หนึ่งชิ้น และหมุนคิว; การเรียกซ้ำอ้างอิงเดิมไม่ตัดซ้ำ และไม่ได้เรียกธนาคารจริง
 CREATE FUNCTION confirm_payment(p_admin BIGINT,p_order BIGINT,p_reference TEXT,p_method TEXT DEFAULT 'demo') RETURNS BIGINT
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE o orders; i order_items; f seller_offers; g BIGINT; head BIGINT; paid payments; v_payment BIGINT; d NUMERIC;
@@ -641,6 +688,8 @@ BEGIN
  RETURN v_payment;
 END; $$;
 
+-- Trigger: shipment_guard
+-- หน้าที่: Trigger ตรวจผู้สร้าง shipment และสถานะตามขาการขนส่ง; ห้ามส่งถึง Buyer ก่อน QC ผ่าน
 CREATE FUNCTION shipment_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE i order_items;
 BEGIN
@@ -659,6 +708,8 @@ BEGIN
  RETURN NEW;
 END; $$;
 CREATE TRIGGER check_shipment BEFORE INSERT ON shipments FOR EACH ROW EXECUTE FUNCTION shipment_guard();
+-- Service/ตัวช่วยใน PostgreSQL: create_shipment
+-- หน้าที่: สร้างเลขติดตามตามขา seller_to_hub/hub_to_buyer/hub_to_seller และปรับสถานะ; ขาคืน Seller แยกหนี้ค่าส่ง
 CREATE FUNCTION create_shipment(p_actor BIGINT,p_order BIGINT,p_leg TEXT,p_carrier TEXT,p_tracking TEXT,p_cost NUMERIC DEFAULT 0) RETURNS BIGINT
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE i order_items; v_ship BIGINT; next_state TEXT; who TEXT;
@@ -676,6 +727,8 @@ BEGIN
  PERFORM log_order(p_order,next_state,p_actor,p_carrier||' / '||p_tracking);
  RETURN v_ship;
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: receive_at_hub
+-- หน้าที่: QC ยืนยันรับสินค้าที่ศูนย์หลังมี shipment ขาเข้า แล้วเปลี่ยนเป็น awaiting_qc พร้อมบันทึกประวัติ
 CREATE FUNCTION receive_at_hub(p_qc BIGINT,p_order BIGINT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE i order_items; v_ship BIGINT;
 BEGIN
@@ -688,6 +741,8 @@ BEGIN
  PERFORM log_order(p_order,'awaiting_qc',p_qc);
 END; $$;
 
+-- Service/ตัวช่วยใน PostgreSQL: record_qc
+-- หน้าที่: QC บันทึกผล คะแนน Seller และหลักฐาน; ผ่านเตรียมส่ง Buyer ไม่ผ่านยกเลิกและขอคืนเงินเต็มยอดที่ Buyer จ่าย
 CREATE FUNCTION record_qc(p_qc BIGINT,p_order BIGINT,p_result TEXT,p_score INTEGER,p_notes TEXT,p_evidence TEXT[]) RETURNS BIGINT
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE i order_items; o orders; paid payments; v_qc BIGINT; ref TEXT; next_state TEXT;
@@ -717,6 +772,8 @@ BEGIN
  RETURN v_qc;
 END; $$;
 
+-- Service/ตัวช่วยใน PostgreSQL: confirm_receipt
+-- หน้าที่: Buyer เจ้าของออเดอร์ยืนยันรับหลังส่งขาออก; เปลี่ยนออเดอร์และรายการเป็น completed เพื่อให้มีสิทธิ์พิจารณาจ่าย Seller
 CREATE FUNCTION confirm_receipt(p_buyer BIGINT,p_order BIGINT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE o orders; i order_items; v_ship BIGINT;
 BEGIN
@@ -731,6 +788,8 @@ BEGIN
  INSERT INTO activity_logs(event_source,shipment_id,status,actor_id) VALUES('shipment',v_ship,'delivered',p_buyer);
  PERFORM log_order(p_order,'completed',p_buyer,'Buyer confirmed receipt and item check.');
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: confirm_seller_return
+-- หน้าที่: QC ยืนยันว่าของขาคืนถึง Seller แล้ว และบันทึกสถานะ returned พร้อมประวัติ
 CREATE FUNCTION confirm_seller_return(p_qc BIGINT,p_order BIGINT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE i order_items; v_ship BIGINT;
 BEGIN
@@ -743,6 +802,8 @@ BEGIN
  PERFORM log_order(p_order,'returned',p_qc);
 END; $$;
 
+-- Service/ตัวช่วยใน PostgreSQL: approve_refund
+-- หน้าที่: Admin อนุมัติ refund ที่ร้องขอหลังตรวจสถานะและการรับชำระเดิม; ไม่โอนเงินจริง
 CREATE FUNCTION approve_refund(p_admin BIGINT,p_refund BIGINT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE r refunds; paid payments;
 BEGIN
@@ -754,6 +815,8 @@ BEGIN
  UPDATE refunds SET status='approved',approved_by=p_admin,approved_at=now() WHERE refund_id=p_refund;
  PERFORM log_action(p_admin,'refund_approved','refund',p_refund);
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: record_refund_paid
+-- หน้าที่: Admin บันทึกว่าคืนเงินแล้วพร้อมเลขอ้างอิงไม่ซ้ำ; เป็นการบันทึกการจ่ายภายนอก ไม่ใช่ payment gateway
 CREATE FUNCTION record_refund_paid(p_admin BIGINT,p_refund BIGINT,p_reference TEXT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE r refunds;
 BEGIN
@@ -765,6 +828,8 @@ BEGIN
  PERFORM log_action(p_admin,'refund_payment_recorded','refund',p_refund);
 END; $$;
 
+-- Service/ตัวช่วยใน PostgreSQL: create_payout
+-- หน้าที่: Admin รวมยอดขายที่เสร็จ/ชำระแล้ว/ไม่คืนเงิน/ยังไม่จ่ายให้ Seller ตามบัญชีธนาคารที่ตรวจแล้ว; สร้าง payout และรายการย่อย
 CREATE FUNCTION create_payout(p_admin BIGINT,p_seller BIGINT,p_bank BIGINT) RETURNS BIGINT LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE b seller_bank_accounts; v_payout BIGINT; v_total NUMERIC; ids BIGINT[];
 BEGIN
@@ -785,6 +850,8 @@ BEGIN
  PERFORM log_action(p_admin,'payout_created','payout',v_payout);
  RETURN v_payout;
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: approve_payout
+-- หน้าที่: Admin ตรวจและอนุมัติ payout ที่ pending หลังตรวจยอดรายการย่อย; ยังไม่บันทึกว่าจ่ายแล้ว
 CREATE FUNCTION approve_payout(p_admin BIGINT,p_payout BIGINT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE n INTEGER;
 BEGIN
@@ -797,6 +864,8 @@ BEGIN
  UPDATE payouts SET status='approved',approved_by=p_admin,approved_at=now() WHERE payout_id=p_payout;
  PERFORM log_action(p_admin,'payout_approved','payout',p_payout);
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: record_payout_paid
+-- หน้าที่: Admin บันทึกการจ่าย Seller ที่อนุมัติแล้วพร้อมเลขอ้างอิง; ไม่ติดต่อธนาคารและไม่อนุญาตจ่ายซ้ำ
 CREATE FUNCTION record_payout_paid(p_admin BIGINT,p_payout BIGINT,p_reference TEXT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  PERFORM require_role(p_admin,'admin');
@@ -817,6 +886,8 @@ REVOKE ALL ON ALL TABLES IN SCHEMA owl FROM PUBLIC;
 
 SET search_path TO owl, public;
 
+-- Trigger: protect_order_snapshot
+-- หน้าที่: Trigger ล็อกยอดเงิน ผู้ซื้อ คูปอง และที่อยู่ snapshot ของออเดอร์ เพื่อไม่ให้ข้อมูลประวัติเปลี่ยนตามข้อมูลปัจจุบัน
 CREATE FUNCTION protect_order_snapshot() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
  IF OLD.shipping_address_line IS NOT NULL AND
@@ -829,6 +900,8 @@ BEGIN
  RETURN NEW;
 END; $$;
 CREATE TRIGGER order_snapshot BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION protect_order_snapshot();
+-- Trigger: protect_item_snapshot
+-- หน้าที่: Trigger ล็อกข้อมูลสินค้าขณะซื้อ เช่น เจ้าของ variant ราคา จำนวน สภาพและตำหนิ; สถานะ fulfillment ยังเปลี่ยนได้ตาม workflow
 CREATE FUNCTION protect_item_snapshot() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
  IF ROW(NEW.order_id,NEW.offer_id,NEW.seller_id,NEW.variant_id,NEW.unit_price,NEW.quantity,NEW.product_name_snapshot,NEW.size_snapshot,NEW.color_snapshot,NEW.condition_snapshot,NEW.defects_snapshot)
@@ -838,6 +911,8 @@ BEGIN
 END; $$;
 CREATE TRIGGER item_snapshot BEFORE UPDATE ON order_items FOR EACH ROW EXECUTE FUNCTION protect_item_snapshot();
 
+-- Trigger: check_refund_record
+-- หน้าที่: Trigger ตรวจว่า refund เท่ากับยอด captured เดิมและเป็นออเดอร์ยกเลิก; ล็อกรายละเอียดและลำดับ requested -> approved -> paid
 CREATE FUNCTION check_refund_record() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE p payments;
 BEGIN
@@ -855,6 +930,8 @@ BEGIN
  RETURN NEW;
 END; $$;
 CREATE TRIGGER refund_guard BEFORE INSERT OR UPDATE ON refunds FOR EACH ROW EXECUTE FUNCTION check_refund_record();
+-- Trigger: check_payout_record
+-- หน้าที่: Trigger ตรวจสิทธิ์ Admin และบัญชีธนาคารของ Seller ที่ verified; ล็อกรายละเอียดและลำดับ pending -> approved -> paid
 CREATE FUNCTION check_payout_record() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  PERFORM require_role(NEW.created_by,'admin');
@@ -872,6 +949,8 @@ BEGIN
  RETURN NEW;
 END; $$;
 CREATE TRIGGER payout_guard BEFORE INSERT OR UPDATE ON payouts FOR EACH ROW EXECUTE FUNCTION check_payout_record();
+-- Trigger: check_payout_item
+-- หน้าที่: Trigger อนุญาตเฉพาะยอดขายของ Seller ที่ completed จ่ายแล้ว และไม่ถูกคืนเงินเข้ารอบจ่าย
 CREATE FUNCTION check_payout_item() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE i order_items; p payouts;
 BEGIN
@@ -887,6 +966,8 @@ END; $$;
 CREATE TRIGGER payout_item_guard BEFORE INSERT ON payout_items FOR EACH ROW EXECUTE FUNCTION check_payout_item();
 CREATE TRIGGER immutable_payout_items BEFORE UPDATE OR DELETE ON payout_items FOR EACH ROW EXECUTE FUNCTION immutable_record();
 
+-- Trigger: check_qc_actor
+-- หน้าที่: Trigger ยืนยันบทบาท QC ของ inspector และกำหนดว่ารายการต้องกำลัง awaiting_qc
 CREATE FUNCTION check_qc_actor() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  PERFORM require_role(NEW.inspector_id,'qc');
@@ -895,6 +976,8 @@ BEGIN
  RETURN NEW;
 END; $$;
 CREATE TRIGGER qc_actor_guard BEFORE INSERT ON qc_inspections FOR EACH ROW EXECUTE FUNCTION check_qc_actor();
+-- Trigger: qc_needs_evidence
+-- หน้าที่: Deferred trigger ตรวจตอนท้าย transaction ว่าผล QC มีหลักฐานอย่างน้อยหนึ่งรายการ เพื่อให้ insert ผลและรูปในชุดเดียวกันได้
 CREATE FUNCTION qc_needs_evidence() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM assets WHERE inspection_id=NEW.inspection_id) THEN RAISE EXCEPTION 'Final QC needs at least one evidence row'; END IF;
@@ -903,6 +986,8 @@ END; $$;
 CREATE CONSTRAINT TRIGGER final_qc_evidence AFTER INSERT ON qc_inspections DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION qc_needs_evidence();
 
+-- Trigger: payment_guard
+-- หน้าที่: Trigger ตรวจ captured payment ให้ยอดตรงออเดอร์รอชำระและผู้ตรวจเป็น Admin; ยอดที่รับชำระแล้วแก้ไม่ได้
 CREATE FUNCTION payment_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  IF TG_OP='UPDATE' AND OLD.status='captured' THEN RAISE EXCEPTION 'Captured payment is immutable'; END IF;
@@ -914,6 +999,8 @@ BEGIN
  RETURN NEW;
 END; $$;
 CREATE TRIGGER captured_payment_guard BEFORE INSERT OR UPDATE ON payments FOR EACH ROW EXECUTE FUNCTION payment_guard();
+-- Trigger: payout_item_snapshot_guard
+-- หน้าที่: แม้ชื่อมี payout แต่ฟังก์ชันนี้ผูกกับ order_items: ตรวจ snapshot ให้ตรง offer และป้องกัน Buyer ซื้อของตัวเอง
 CREATE FUNCTION payout_item_snapshot_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE f seller_offers; o orders;
 BEGIN
@@ -925,12 +1012,18 @@ BEGIN
  RETURN NEW;
 END; $$;
 CREATE TRIGGER item_source_guard BEFORE INSERT ON order_items FOR EACH ROW EXECUTE FUNCTION payout_item_snapshot_guard();
+-- Trigger: admin_review_guard
+-- หน้าที่: ตัวช่วย trigger เดิมสำหรับตรวจ NEW.admin_id เป็น Admin; schema ฉบับนี้ไม่ได้ผูกใช้งาน ต้องดู compact_review_guard สำหรับ review จริง
 CREATE FUNCTION admin_review_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN PERFORM require_role(NEW.admin_id,'admin'); RETURN NEW; END; $$;
+-- Trigger: catalog_owner_guard
+-- หน้าที่: Trigger ตรวจว่าผู้สร้างสินค้าแค็ตตาล็อกมีบทบาท Admin; Seller เพิ่ม Product กลางเองไม่ได้
 CREATE FUNCTION catalog_owner_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN PERFORM require_role(NEW.created_by,'admin'); RETURN NEW; END; $$;
 CREATE TRIGGER catalog_actor_guard BEFORE INSERT ON products FOR EACH ROW EXECUTE FUNCTION catalog_owner_guard();
 
+-- Trigger: check_queue_entry
+-- หน้าที่: Trigger ตรวจว่า offer ที่ใส่คิวได้รับอนุมัติ มีของ และ variant/สภาพตรงกับกลุ่มคิว
 CREATE FUNCTION check_queue_entry() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM seller_offers f JOIN queue_groups g ON g.group_id=NEW.group_id
@@ -940,12 +1033,16 @@ BEGIN
 END; $$;
 CREATE TRIGGER queue_entry_guard BEFORE INSERT OR UPDATE ON queue_entries FOR EACH ROW EXECUTE FUNCTION check_queue_entry();
 
+-- Service/ตัวช่วยใน PostgreSQL: set_cart_item
+-- หน้าที่: ตรวจบทบาท Buyer แล้วเพิ่ม/แทนที่ตัวเลือกใน carts ของผู้ใช้; หนึ่งแถวเก็บหนึ่งตัวเลือกและจำนวนหนึ่ง
 CREATE FUNCTION set_cart_item(p_buyer BIGINT,p_variant BIGINT,p_condition TEXT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  PERFORM require_role(p_buyer,'buyer');
  INSERT INTO carts(user_id,variant_id,condition,added_at) VALUES(p_buyer,p_variant,p_condition,now())
  ON CONFLICT(user_id) DO UPDATE SET variant_id=excluded.variant_id,condition=excluded.condition,added_at=now();
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: verify_seller
+-- หน้าที่: Admin ตรวจคำขอยืนยัน Seller ที่ pending แล้วเก็บผล ผู้ตรวจ เวลาและหมายเหตุ พร้อม audit
 CREATE FUNCTION verify_seller(p_admin BIGINT,p_verification BIGINT,p_approve BOOLEAN,p_note TEXT) RETURNS VOID
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
@@ -957,6 +1054,8 @@ BEGIN
  PERFORM log_action(p_admin,'seller_verification_reviewed','seller_verification',p_verification);
 END; $$;
 
+-- Service/ตัวช่วยใน PostgreSQL: request_cancellation
+-- หน้าที่: Buyer ขอเลิกเฉพาะออเดอร์ตัวเองที่ยังไม่ส่งมอบจาก Seller ตามขอบเขตต้นแบบ; คืน request_id
 CREATE FUNCTION request_cancellation(p_buyer BIGINT,p_order BIGINT,p_reason TEXT) RETURNS BIGINT
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE v_id BIGINT;
@@ -968,6 +1067,8 @@ BEGIN
  INSERT INTO cancellation_requests(order_id,buyer_id,reason) VALUES(p_order,p_buyer,p_reason) RETURNING request_id INTO v_id;
  RETURN v_id;
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: review_cancellation
+-- หน้าที่: Admin ตรวจคำขอ; ถ้าอนุมัติคืน stock เฉพาะเมื่อเคยยืนยันชำระ/จองของ และสร้าง refund เฉพาะยอดที่รับแล้ว
 CREATE FUNCTION review_cancellation(p_admin BIGINT,p_request BIGINT,p_approve BOOLEAN) RETURNS VOID
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE r cancellation_requests; o orders; i order_items; f seller_offers; g BIGINT; paid payments;
@@ -999,6 +1100,8 @@ BEGIN
  END IF;
  PERFORM log_order(o.order_id,'cancelled',p_admin,'Stock restored only if payment had reserved one unit.');
 END; $$;
+-- Service/ตัวช่วยใน PostgreSQL: record_return_shipping_paid
+-- หน้าที่: Admin บันทึกว่า Seller ชำระหนี้ค่าส่งคืนแล้วพร้อมเลขอ้างอิง; ไม่หักเงินจาก refund ของ Buyer
 CREATE FUNCTION record_return_shipping_paid(p_admin BIGINT,p_charge BIGINT,p_reference TEXT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  PERFORM require_role(p_admin,'admin');
@@ -1051,9 +1154,13 @@ SELECT (SELECT coalesce(sum(amount),0) FROM payments WHERE status='captured') AS
 
 
 CREATE TRIGGER immutable_activity BEFORE UPDATE OR DELETE ON activity_logs FOR EACH ROW EXECUTE FUNCTION immutable_record();
+-- Trigger: compact_asset_guard
+-- หน้าที่: Trigger ห้ามแก้หรือลบ asset ที่เป็นหลักฐาน QC; ภาพสินค้า/ข้อเสนอใช้กฎของตัวเอง
 CREATE FUNCTION compact_asset_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN IF OLD.inspection_id IS NOT NULL THEN RAISE EXCEPTION 'QC evidence is immutable'; END IF; IF TG_OP='DELETE' THEN RETURN OLD; END IF; RETURN NEW; END; $$;
 CREATE TRIGGER immutable_evidence BEFORE UPDATE OR DELETE ON assets FOR EACH ROW EXECUTE FUNCTION compact_asset_guard();
+-- Trigger: compact_review_guard
+-- หน้าที่: Trigger ตรวจ reviewed_by เป็น Admin และห้ามแก้คำตัดสิน/เหตุผล/เวลาหลังเคย review แล้ว
 CREATE FUNCTION compact_review_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  IF TG_OP='UPDATE' AND OLD.reviewed_by IS NOT NULL AND ROW(NEW.review_decision,NEW.reviewed_by,NEW.review_reason,NEW.reviewed_at) IS DISTINCT FROM ROW(OLD.review_decision,OLD.reviewed_by,OLD.review_reason,OLD.reviewed_at) THEN RAISE EXCEPTION 'Review is immutable'; END IF;
@@ -1062,6 +1169,8 @@ BEGIN
 END; $$;
 CREATE TRIGGER review_guard BEFORE INSERT OR UPDATE ON seller_offers FOR EACH ROW EXECUTE FUNCTION compact_review_guard();
 
+-- Trigger: compact_address_required
+-- หน้าที่: Deferred trigger ตรวจว่ามี shipping snapshot ครบ 6 ช่องเมื่อจบ transaction; checkout จึง insert ออเดอร์แล้วเติมที่อยู่ใน transaction เดียวได้
 CREATE FUNCTION compact_address_required() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE o orders;
 BEGIN SELECT * INTO o FROM orders WHERE order_id=NEW.order_id;
@@ -1102,6 +1211,7 @@ INSERT INTO categories(name) VALUES('Shoes'),('Clothing'),('Accessories');
 INSERT INTO platform_settings(settings_id,platform_fee_percent,shipping_fee,active_turn_hours,note) VALUES(1,10.00,50.00,24,
  'Prototype proposal: platform fee 10% includes listing and QC; shipping example 50 THB. Update before real use.');
 
+-- บล็อกสร้างข้อมูลสมมติ 100 สินค้าพร้อม variants สำหรับเดโม; ไม่ใช่ฟังก์ชันที่ผู้ใช้เรียกจากเว็บ
 DO $$
 DECLARE n INTEGER; p_id BIGINT; v_size TEXT; cat BIGINT; brand TEXT; label TEXT; sizes TEXT[];
 BEGIN

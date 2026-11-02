@@ -57,3 +57,7 @@ Run `npm test`. The database user needs CREATEDB; tests use temporary databases 
 The API uses relative /api paths and cookie sessions. Serve the team's Frontend and proxy /api to this Backend on the same origin, or configure a narrow allowed frontend origin and credential handling for a separate-origin deployment. Cross-origin writes are rejected by default. A standalone Frontend server requires integration configuration; do not disable these checks globally.
 
 .env, node_modules, logs and runtime PID files are ignored by Git. Never commit private database credentials.
+
+## อ่านโค้ดเตรียมเดโม
+
+ดู [คู่มือภาษาไทยพร้อมเลขบรรทัดและคำถามที่ควรซ้อม](docs/DEMO_CODE_GUIDE_TH.md) มีคอมเมนต์ในทุกฟังก์ชัน Backend และฟังก์ชัน SQL พร้อมจุดเน้นของเส้นทางเสนอขาย
