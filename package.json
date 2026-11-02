@@ -1,0 +1,17 @@
+{
+  "name": "owl-pai-lei",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "backend"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "npm --workspace backend run start",
+    "dev": "npm --workspace backend run dev",
+    "db:setup": "npm --workspace backend run db:setup",
+    "test": "npm --workspace backend run test"
+  }
+}

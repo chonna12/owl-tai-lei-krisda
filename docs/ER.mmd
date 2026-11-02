@@ -1,0 +1,252 @@
+erDiagram
+  activity_logs {
+    int8 log_id PK
+    int8 actor_id FK
+    int8 order_id FK
+    int8 shipment_id FK
+    int8 group_id FK
+    int8 offer_id FK
+    int8 refund_id FK
+    int8 payout_id FK
+    int8 verification_id FK
+    int8 charge_id FK
+    varchar status
+  }
+  addresses {
+    int8 address_id PK
+    int8 user_id FK
+  }
+  assets {
+    int8 asset_id PK
+    int8 product_id FK
+    int8 offer_id FK
+    int8 inspection_id FK
+  }
+  cancellation_requests {
+    int8 request_id PK
+    int8 order_id FK
+    int8 buyer_id FK
+    varchar status
+    int8 reviewed_by FK
+  }
+  carts {
+    int8 cart_id PK
+    int8 user_id FK
+    int8 variant_id FK
+  }
+  categories {
+    int8 category_id PK
+    varchar name
+  }
+  coupon_redemptions {
+    int8 redemption_id PK
+    int8 coupon_id FK
+    int8 user_id FK
+    int8 order_id FK
+  }
+  coupons {
+    int8 coupon_id PK
+    int8 created_by FK
+  }
+  notifications {
+    int8 notification_id PK
+    int8 user_id FK
+    int8 order_id FK
+    int8 offer_id FK
+  }
+  order_items {
+    int8 order_item_id PK
+    int8 order_id FK
+    int8 offer_id FK
+    int8 seller_id FK
+    int8 variant_id FK
+    varchar fulfillment_status
+  }
+  orders {
+    int8 order_id PK
+    int8 buyer_id FK
+    varchar status
+    numeric total
+    int8 coupon_id FK
+  }
+  payments {
+    int8 payment_id PK
+    int8 order_id FK
+    numeric amount
+    varchar status
+    int8 verified_by FK
+  }
+  payout_items {
+    int8 payout_id PK
+    int8 order_item_id PK
+    numeric amount
+  }
+  payouts {
+    int8 payout_id PK
+    int8 seller_id FK
+    int8 bank_account_id FK
+    numeric amount
+    varchar status
+    int8 created_by FK
+    int8 approved_by FK
+    int8 paid_by FK
+  }
+  platform_settings {
+    int2 settings_id PK
+  }
+  product_variants {
+    int8 variant_id PK
+    int8 product_id FK
+  }
+  products {
+    int8 product_id PK
+    int8 category_id FK
+    varchar name
+    int8 created_by FK
+  }
+  qc_inspections {
+    int8 inspection_id PK
+    int8 order_item_id FK
+    int8 inspector_id FK
+    int2 seller_score
+  }
+  queue_entries {
+    int8 offer_id PK
+    int8 group_id FK
+  }
+  queue_groups {
+    int8 group_id PK
+    int8 variant_id FK
+    int8 active_offer_id FK
+  }
+  refunds {
+    int8 refund_id PK
+    int8 order_id FK
+    int8 payment_id FK
+    numeric amount
+    varchar status
+    int8 approved_by FK
+    int8 paid_by FK
+  }
+  roles {
+    int2 role_id PK
+    varchar name
+  }
+  seller_bank_accounts {
+    int8 bank_account_id PK
+    int8 seller_id FK
+  }
+  seller_charges {
+    int8 charge_id PK
+    int8 seller_id FK
+    int8 shipment_id FK
+    numeric amount
+    varchar status
+    int8 recorded_by FK
+  }
+  seller_offers {
+    int8 offer_id PK
+    int8 seller_id FK
+    int8 variant_id FK
+    numeric asking_price
+    int4 available_quantity
+    varchar status
+    int8 reviewed_by FK
+  }
+  seller_verifications {
+    int8 verification_id PK
+    int8 seller_id FK
+    varchar status
+    int8 reviewer_id FK
+  }
+  sessions {
+    int8 session_id PK
+    int8 user_id FK
+  }
+  shipments {
+    int8 shipment_id PK
+    int8 order_item_id FK
+    varchar status
+    int8 created_by FK
+  }
+  user_roles {
+    int8 user_id PK
+    int2 role_id PK
+  }
+  users {
+    int8 user_id PK
+    varchar status
+  }
+  wishlist_items {
+    int8 user_id PK
+    int8 product_id PK
+  }
+  users ||--o{ user_roles : "user_id"
+  roles ||--o{ user_roles : "role_id"
+  users ||--o{ sessions : "user_id"
+  users ||--o{ addresses : "user_id"
+  users ||--o{ seller_bank_accounts : "seller_id"
+  users ||--o{ seller_verifications : "seller_id"
+  users ||--o{ seller_verifications : "reviewer_id"
+  categories ||--o{ products : "category_id"
+  users ||--o{ products : "created_by"
+  products ||--o{ product_variants : "product_id"
+  seller_offers ||--o{ queue_groups : "active_offer_id"
+  users ||--o{ carts : "user_id"
+  users ||--o{ seller_offers : "seller_id"
+  product_variants ||--o{ seller_offers : "variant_id"
+  users ||--o{ seller_offers : "reviewed_by"
+  product_variants ||--o{ queue_groups : "variant_id"
+  seller_offers ||--o{ queue_entries : "offer_id"
+  queue_groups ||--o{ queue_entries : "group_id"
+  users ||--o{ wishlist_items : "user_id"
+  products ||--o{ wishlist_items : "product_id"
+  product_variants ||--o{ carts : "variant_id"
+  users ||--o{ coupons : "created_by"
+  users ||--o{ orders : "buyer_id"
+  coupons ||--o{ orders : "coupon_id"
+  orders ||--o{ order_items : "order_id"
+  seller_offers ||--o{ order_items : "offer_id"
+  users ||--o{ order_items : "seller_id"
+  product_variants ||--o{ order_items : "variant_id"
+  coupons ||--o{ coupon_redemptions : "coupon_id"
+  users ||--o{ coupon_redemptions : "user_id"
+  orders ||--o{ coupon_redemptions : "order_id"
+  users ||--o{ cancellation_requests : "buyer_id"
+  users ||--o{ cancellation_requests : "reviewed_by"
+  orders ||--o{ payments : "order_id"
+  users ||--o{ payments : "verified_by"
+  orders ||--o{ cancellation_requests : "order_id"
+  order_items ||--o{ qc_inspections : "order_item_id"
+  users ||--o{ qc_inspections : "inspector_id"
+  order_items ||--o{ shipments : "order_item_id"
+  users ||--o{ shipments : "created_by"
+  users ||--o{ refunds : "approved_by"
+  users ||--o{ refunds : "paid_by"
+  orders ||--o{ refunds : "order_id"
+  payments ||--o{ refunds : "payment_id"
+  users ||--o{ seller_charges : "seller_id"
+  shipments ||--o{ seller_charges : "shipment_id"
+  users ||--o{ seller_charges : "recorded_by"
+  users ||--o{ payouts : "paid_by"
+  qc_inspections ||--o{ assets : "inspection_id"
+  users ||--o{ payouts : "seller_id"
+  seller_bank_accounts ||--o{ payouts : "bank_account_id"
+  users ||--o{ payouts : "created_by"
+  users ||--o{ payouts : "approved_by"
+  payouts ||--o{ payout_items : "payout_id"
+  order_items ||--o{ payout_items : "order_item_id"
+  users ||--o{ notifications : "user_id"
+  orders ||--o{ notifications : "order_id"
+  seller_offers ||--o{ notifications : "offer_id"
+  products ||--o{ assets : "product_id"
+  seller_offers ||--o{ assets : "offer_id"
+  users ||--o{ activity_logs : "actor_id"
+  orders ||--o{ activity_logs : "order_id"
+  shipments ||--o{ activity_logs : "shipment_id"
+  queue_groups ||--o{ activity_logs : "group_id"
+  seller_offers ||--o{ activity_logs : "offer_id"
+  refunds ||--o{ activity_logs : "refund_id"
+  payouts ||--o{ activity_logs : "payout_id"
+  seller_verifications ||--o{ activity_logs : "verification_id"
+  seller_charges ||--o{ activity_logs : "charge_id"
