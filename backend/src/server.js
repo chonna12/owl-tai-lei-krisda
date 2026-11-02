@@ -2,6 +2,7 @@ import express from 'express';
 import pg from 'pg';
 import {verifyPassword,newToken,tokenHash,readToken} from './security.js';
 import {validatePhotos,savePhotos} from './photos.js';
+import {fileURLToPath} from 'node:url';
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
@@ -18,6 +19,7 @@ app.use((req,res,next)=>{
   if(req.path.startsWith('/api/'))res.setHeader('Cache-Control','no-store');
   next();
 });
+app.use(express.static(fileURLToPath(new URL('../../frontend', import.meta.url))));
 const attempts=new Map();
 app.post('/api/login',async(req,res)=>{
   const key=req.ip,now=Date.now();let attempt=attempts.get(key);
