@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Owl Pai Lei</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=db-demo-1">
 </head>
 <body>
   <div class="page">
@@ -23,7 +23,7 @@
       </a>
       <nav class="nav" aria-label="Main"><a class="nav-link" href="/" aria-current="page">Home</a></nav>
       <div class="user">
-        <span class="user-name">Demo Seller One</span>
+        <span id="demo-status" class="user-name">Demo Seller One · Demo mode</span>
         <span class="avatar" aria-hidden="true">DS</span>
       </div>
     </header>
@@ -162,14 +162,12 @@
         <form id="offer-form" class="sf-form">
 
           <div class="sf-field">
-            <label class="sf-label">Product photo</label>
-            <div class="sf-photo-drop">
-              <div class="sf-photo-drop-inner">
-                <span class="sf-photo-icon">📷</span>
-                <span class="sf-photo-text">Tap to add photos</span>
-                <span class="sf-photo-sub">JPG · PNG · up to 10 MB</span>
-              </div>
-            </div>
+            <label class="sf-label" for="form-photos">Product photos (up to 3)</label>
+            <label class="sf-photo-drop" for="form-photos">
+              <span class="sf-photo-drop-inner"><span class="sf-photo-icon">📷</span><span class="sf-photo-text">Choose item photos</span><span class="sf-photo-sub">JPG · PNG · WebP · up to 2 MB each</span></span>
+              <input id="form-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+            </label>
+            <div id="photo-previews" class="sf-photo-previews"></div>
           </div>
 
           <div class="sf-field">
@@ -188,12 +186,15 @@
             </div>
           </div>
 
-          <div id="used-fields" class="sf-field" style="display:none;">
+          <div class="sf-field"><label class="sf-label" for="form-quantity">Quantity</label><input type="number" id="form-quantity" class="sf-input" min="1" max="100000" step="1" value="1" required></div>
+          <div class="sf-field"><label class="sf-label" for="form-notes">Additional notes (optional)</label><textarea id="form-notes" class="sf-textarea" maxlength="2000"></textarea></div>
+          <div id="used-fields" class="sf-field" hidden>
             <label class="sf-label" for="form-defects">Condition details</label>
-            <textarea id="form-defects" class="sf-textarea"
+            <textarea id="form-defects" class="sf-textarea" maxlength="2000"
               placeholder="Describe any wear, scuffs, missing items, included receipt…"></textarea>
           </div>
 
+          <p id="sf-error" class="sf-error" role="alert"></p>
           <button type="submit" id="sf-submit" class="sf-submit-btn">
             Confirm listing →
           </button>
@@ -256,6 +257,6 @@
     </div>
   </template>
 
-  <script src="approve.js"></script>
+  <script src="approve.js?v=db-demo-1"></script>
 </body>
 </html>

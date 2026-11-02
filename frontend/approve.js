@@ -1,27 +1,91 @@
 // approve.js — Pure JS logic. HTML lives in index.html, styles in styles.css.
 
-// ─── Local order store — persisted in localStorage (no auth required yet) ─────
-const ORDERS_KEY = 'owl_local_orders';
-
-function loadLocalOrders() {
-  try { return JSON.parse(localStorage.getItem(ORDERS_KEY)) || []; }
-  catch { return []; }
-}
-
-function saveLocalOrder(order) {
-  const orders = loadLocalOrders();
-  orders.push(order);
-  localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
-}
-
-// ─── Utilities ────────────────────────────────────────────────────────────────
+// Demo mode uses the existing authenticated API. There is no Login screen in this classroom build.
 const $ = id => document.getElementById(id);
 const ICONS = { Shoes: 'icon-shoe', Clothing: 'icon-tee', Accessories: 'icon-bag' };
+let demoSession = null;
 
-async function getJson(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Request failed');
-  return res.json();
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', ...options.headers }
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.error || 'Request failed. Please try again.');
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+const getJson = url => requestJson(url);
+
+// Public fictional seed credentials only. The Backend still validates the password, session and Seller role.
+async function ensureDemoSession() {
+  if (!demoSession) {
+    demoSession = (async () => {
+      try {
+        const { user } = await getJson('/api/me');
+        if (user.email === 'seller1@owl.test' && user.canSell) return user;
+      } catch (error) {
+        if (error.status !== 401) throw error;
+      }
+      const { user } = await requestJson('/api/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: 'seller1@owl.test', password: 'OwlDemo123!' })
+      });
+      return user;
+    })().catch(error => { demoSession = null; throw error; });
+  }
+  return demoSession;
+}
+
+async function sellerRequest(url, options = {}) {
+  await ensureDemoSession();
+  try { return await requestJson(url, options); }
+  catch (error) {
+    if (error.status !== 401) throw error;
+    demoSession = null;
+    await ensureDemoSession();
+    return requestJson(url, options);
+  }
+}
+
+function renderPhotoPreviews(container, photos, onRemove) {
+  container.replaceChildren();
+  photos.forEach((src, index) => {
+    const box = document.createElement('div');
+    box.className = 'sf-photo-preview';
+    const img = document.createElement('img');
+    img.src = src; img.alt = `Item photo ${index + 1}`;
+    const remove = document.createElement('button');
+    remove.type = 'button'; remove.textContent = '×';
+    remove.setAttribute('aria-label', `Remove photo ${index + 1}`);
+    remove.addEventListener('click', () => onRemove(index));
+    box.append(img, remove); container.append(box);
+  });
+}
+
+async function readItemPhoto(file) {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type))
+    throw new Error('Choose JPG, PNG or WebP images.');
+  if (!file.size || file.size > 2 * 1024 * 1024)
+    throw new Error('Each photo must be no larger than 2 MB.');
+  const data = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read this photo.'));
+    reader.readAsDataURL(file);
+  });
+  await new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = resolve;
+    image.onerror = () => reject(new Error('This file could not be opened as an image.'));
+    image.src = data;
+  });
+  return data;
 }
 
 /** Clone a <template> into .page and return the page element for querying. */
@@ -30,6 +94,10 @@ function renderTemplate(templateId) {
   const tpl  = document.getElementById(templateId);
   page.innerHTML = '';
   page.appendChild(tpl.content.cloneNode(true));
+  const notice = document.createElement('p');
+  notice.className = 'demo-mode';
+  notice.textContent = 'Demo mode · Seller One · Offers are saved to PostgreSQL';
+  page.prepend(notice);
   return page;
 }
 
@@ -74,10 +142,10 @@ async function showActionModal(product) {
     const img = document.createElement('img');
     img.src = product.image;
     img.alt = product.name;
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:10px;';
+    img.className = 'item-photo';
     thumb.append(img);
   } else {
-    thumb.style.cssText = 'display:grid;place-items:center;font-size:30px;';
+    thumb.classList.add('apm-thumb-placeholder');
     thumb.textContent = '👟';
   }
 
@@ -142,6 +210,7 @@ async function showActionModal(product) {
 
 // ─── 2. SELL FORM ─────────────────────────────────────────────────────────────
 async function showSellForm(product) {
+  try { await ensureDemoSession(); } catch(error) { alert('Demo account could not sign in: ' + error.message); return; }
   const page = renderTemplate('tpl-sell-form');
 
   // Fill product chip
@@ -183,39 +252,81 @@ async function showSellForm(product) {
     selectedCondition = 'new';
     tabNew.classList.add('sf-tab-active');
     tabUsed.classList.remove('sf-tab-active');
-    usedBlock.style.display = 'none';
+    usedBlock.hidden = true;
+    page.querySelector('#form-defects').required = false;
+    page.querySelector('#form-quantity').readOnly = false;
+    page.querySelector('#form-quantity').max = '100000';
   });
   tabUsed.addEventListener('click', () => {
     selectedCondition = 'used';
     tabUsed.classList.add('sf-tab-active');
     tabNew.classList.remove('sf-tab-active');
-    usedBlock.style.display = 'block';
+    usedBlock.hidden = false;
+    page.querySelector('#form-defects').required = true;
+    page.querySelector('#form-quantity').value = '1';
+    page.querySelector('#form-quantity').max = '1';
+    page.querySelector('#form-quantity').readOnly = true;
   });
 
-  // Form submit — auth not required yet, save locally and go to pending page
-  page.querySelector('#offer-form').addEventListener('submit', e => {
+  const photos = [];
+  const photoInput = page.querySelector('#form-photos');
+  const previews = page.querySelector('#photo-previews');
+  const message = page.querySelector('#sf-error');
+  const btn = page.querySelector('#sf-submit');
+  let readingPhotos = false;
+  const repaint = () => renderPhotoPreviews(previews, photos, index => {
+    photos.splice(index, 1); repaint();
+  });
+  photoInput.addEventListener('change', async () => {
+    const files = Array.from(photoInput.files || []);
+    message.textContent = '';
+    if (photos.length + files.length > 3) {
+      message.textContent = 'Attach up to 3 photos. Remove a photo before adding another.';
+      photoInput.value = ''; return;
+    }
+    readingPhotos = true; btn.disabled = true;
+    try {
+      const loaded = [];
+      for (const file of files) {
+        const src = await readItemPhoto(file);
+        if (photos.includes(src) || loaded.includes(src)) throw new Error('This photo is already attached.');
+        loaded.push(src);
+      }
+      photos.push(...loaded); repaint();
+    } catch (error) { message.textContent = error.message; }
+    finally { readingPhotos = false; btn.disabled = false; photoInput.value = ''; }
+  });
+
+  // UI -> POST API -> create_offer/savePhotos -> PostgreSQL. Show success only after HTTP 201.
+  page.querySelector('#offer-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const btn = page.querySelector('#sf-submit');
-    btn.disabled    = true;
-    btn.textContent = 'Submitting…';
-
-    // Save listing to localStorage so "My sell orders" persists across reloads
-    saveLocalOrder({
-      product_name: product.name,
-      brand_name:   product.brand_name,
-      image:        product.image || null,
-      condition:    selectedCondition,
-      price:        parseFloat(page.querySelector('#form-price').value) || null,
-      status:       'pending'
-    });
-
-    showPendingResult();
+    if (readingPhotos) return;
+    btn.disabled = true; btn.textContent = 'Submitting…'; message.textContent = '';
+    try {
+      const result = await sellerRequest('/api/seller/offers', {
+        method: 'POST',
+        body: JSON.stringify({
+          variantId: select.value,
+          condition: selectedCondition,
+          price: Number(page.querySelector('#form-price').value),
+          quantity: Number(page.querySelector('#form-quantity').value),
+          defects: selectedCondition === 'used' ? page.querySelector('#form-defects').value.trim() : '',
+          notes: page.querySelector('#form-notes').value.trim(),
+          photos
+        })
+      });
+      showPendingResult(result.offer_id);
+    } catch (error) { message.textContent = error.message; }
+    finally { btn.disabled = false; btn.textContent = 'Confirm listing →'; }
   });
 }
 
 // ─── 3. PENDING APPROVAL PAGE ─────────────────────────────────────────────────
-function showPendingResult() {
+function showPendingResult(offerId) {
   const page = renderTemplate('tpl-pending');
+  const saved = document.createElement('p'); saved.className = 'saved-offer-id';
+  saved.textContent = `Offer #${offerId} saved to the database · Pending Admin approval`;
+  page.querySelector('.pa-page').append(saved);
   page.querySelector('#pa-home').addEventListener('click', () => window.location.reload());
   page.querySelector('#pa-view-orders').addEventListener('click', showMyOrders);
 }
@@ -227,8 +338,17 @@ async function showMyOrders() {
 
   const list = page.querySelector('#mo-list');
 
-  // Use locally stored orders (persisted in localStorage, no auth required yet)
-  const offers = loadLocalOrders();
+  // Read only this authenticated Seller's records from PostgreSQL, never from localStorage.
+  let offers;
+  try {
+    const data = await sellerRequest('/api/seller/offers');
+    offers = data.offers.map(offer => ({
+      ...offer,
+      product_name: offer.name,
+      price: Number(offer.asking_price),
+      image: (offer.photos || []).find(photo => /^data:image\/(png|jpeg|webp);base64,/.test(photo)) || null
+    }));
+  } catch (error) { list.textContent = error.message; return; }
 
   if (offers.length === 0) {
     list.innerHTML = '';
@@ -256,7 +376,7 @@ async function showMyOrders() {
       const img = document.createElement('img');
       img.src   = offer.image;
       img.alt   = offer.product_name || '';
-      img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:10px;';
+      img.className = 'item-photo';
       thumb.append(img);
     } else {
       thumb.textContent = 'Picture';
@@ -268,12 +388,12 @@ async function showMyOrders() {
 
     const name = document.createElement('span');
     name.className   = 'mo-item-name';
-    name.textContent = offer.product_name || 'Product';
+    name.textContent = `#${offer.offer_id} · ${offer.product_name || 'Product'}`;
 
     const cond = document.createElement('span');
     cond.className   = 'mo-item-cond';
     cond.textContent = (offer.condition === 'new' ? 'First hand' : 'Second hand')
-                     + (offer.price ? ` · ${offer.price.toFixed(2)} THB` : '');
+                     + (offer.price ? ` · ${offer.price.toFixed(2)} THB` : '') + ` · Size ${offer.size} · Qty ${offer.available_quantity}`;
 
     const badge = document.createElement('span');
     const status = offer.status || 'pending';
@@ -290,6 +410,7 @@ function statusLabel(status) {
   switch (status) {
     case 'approved': return '✅ Approved';
     case 'rejected': return '❌ Rejected';
+    case 'withdrawn': return 'Withdrawn';
     default:         return 'Pending approval';
   }
 }
@@ -343,6 +464,8 @@ async function loadHome() {
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Start the named demo session automatically. Backend role checks remain enabled.
+  ensureDemoSession().catch(error => { const status=$('demo-status'); if(status) status.textContent='Demo sign-in failed: '+error.message; });
   // Modal close handlers (modal is always in the DOM)
   const overlay = $('action-modal-overlay');
   overlay.addEventListener('click', e => {

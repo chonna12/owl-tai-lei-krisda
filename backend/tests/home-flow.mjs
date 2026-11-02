@@ -13,7 +13,7 @@ try{
  await new Promise((resolve,reject)=>{child.stdout.once('data',resolve);child.stderr.once('data',x=>reject(Error(String(x))));child.once('exit',c=>reject(Error('Server exited '+c)));});
  const base='http://127.0.0.1:3199';let cookie='';
  const request=async(path,options={})=>fetch(base+path,{...options,headers:{'Content-Type':'application/json',...(cookie?{cookie}:{}),...options.headers}});
- const info=await (await request('/')).json();assert.equal(info.frontendIncluded,false);
+ const html=await (await request('/')).text();assert(html.includes('tpl-sell-form'));assert(html.includes('form-photos'));const frontend=await (await request('/approve.js')).text();assert(frontend.includes("sellerRequest('/api/seller/offers'"));assert(!frontend.includes('localStorage.setItem'));
  assert.equal((await request('/api/orders',{method:'POST',body:'{}'})).status,401);
  const login=await request('/api/login',{method:'POST',body:JSON.stringify({email:'buyer@owl.test',password:'OwlDemo123!'})});assert.equal(login.status,200);cookie=login.headers.get('set-cookie').split(';')[0];const buyer=await login.json();assert.equal(buyer.user.canSell,false);
  const addresses=await (await request('/api/addresses')).json();assert.equal(addresses.addresses[0].address_id,'1');
@@ -22,13 +22,13 @@ try{
  assert.equal((await request('/api/seller/offers')).status,401);
  const badAddress=await request('/api/orders',{method:'POST',body:JSON.stringify({variantId:'3',condition:'new',addressId:'2'})});assert.equal(badAddress.status,400);
  const sellerLogin=await request('/api/login',{method:'POST',body:JSON.stringify({email:'seller2@owl.test',password:'OwlDemo123!'})});cookie=sellerLogin.headers.get('set-cookie').split(';')[0];const seller=await sellerLogin.json();
- const photo='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aDaoAAAAASUVORK5CYII=';
+ const image=await readFile(rootDir+'tests/fixtures/image-index-regression.png');assert(image.length>30000);const photo='data:image/png;base64,'+image.toString('base64');
  const invalid=await request('/api/seller/offers',{method:'POST',body:JSON.stringify({variantId:'3',condition:'used',price:600,quantity:1,defects:'Small mark',notes:'',photos:['data:image/svg+xml;base64,AAAA']})});assert.equal(invalid.status,400);
  const offered=await request('/api/seller/offers',{method:'POST',body:JSON.stringify({variantId:'3',condition:'used',price:600,quantity:1,defects:'Small mark',notes:'Home-flow test',photos:[photo]})});assert.equal(offered.status,201);const {offer_id}=await offered.json();const saved=(await (await request('/api/seller/offers')).json()).offers.find(o=>o.offer_id===offer_id);assert.deepEqual(saved.photos,[photo]);
  const edit=await request('/api/seller/offers/'+offer_id,{method:'PATCH',body:JSON.stringify({price:650,quantity:1,defects:'Small mark',notes:'Updated'})});assert.equal(edit.status,200);assert.equal((await db.query('SELECT file_reference FROM owl.assets WHERE offer_id=$1',[offer_id])).rows[0].file_reference,photo);
  const locked=await request('/api/seller/offers/1',{method:'PATCH',body:JSON.stringify({price:1000,quantity:3,defects:'',notes:'',photos:[photo]})});assert.equal(locked.status,400);
  assert.equal((await db.query('SELECT status FROM seller_offers WHERE offer_id=$1',[offer_id])).rows[0].status,'pending');
- console.log('PASS: Backend runs without frontend; catalog, buyer login/checkout, address ownership, seller offer creation/edit, photo persistence/validation and approved-offer protection.');
+ console.log('PASS: DB-connected frontend assets; realistic image storage/index regression; catalog, buyer login/checkout, address ownership, seller offer creation/edit, photo persistence/validation and approved-offer protection.');
 }finally{
  if(child){child.kill();await new Promise(r=>child.once('exit',r));}await db?.end();if(/^owl_home_test_[a-f0-9]{10}$/.test(name))await root.query(`DROP DATABASE IF EXISTS ${name}`);await root.end();
 }

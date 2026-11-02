@@ -357,9 +357,9 @@ CREATE TABLE assets (
  CHECK((source_table IS NULL)=(source_record_id IS NULL)),
  UNIQUE(source_table,source_record_id)
 );
-CREATE UNIQUE INDEX assets_product_file ON assets(product_id,file_reference) WHERE product_id IS NOT NULL;
-CREATE UNIQUE INDEX assets_offer_file ON assets(offer_id,file_reference) WHERE offer_id IS NOT NULL;
-CREATE UNIQUE INDEX assets_qc_file ON assets(inspection_id,file_reference) WHERE inspection_id IS NOT NULL;
+CREATE UNIQUE INDEX assets_product_file ON assets(product_id,md5(file_reference)) WHERE product_id IS NOT NULL;
+CREATE UNIQUE INDEX assets_offer_file ON assets(offer_id,md5(file_reference)) WHERE offer_id IS NOT NULL;
+CREATE UNIQUE INDEX assets_qc_file ON assets(inspection_id,md5(file_reference)) WHERE inspection_id IS NOT NULL;
 
 -- One append-only journal; important business references keep FK constraints.
 CREATE TABLE activity_logs (

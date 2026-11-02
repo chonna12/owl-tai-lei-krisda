@@ -1,6 +1,35 @@
+# Owl Pai Lei — Team Demo
+
+## Seller UI is connected to PostgreSQL
+
+The frontend automatically signs in to the fictional Demo Seller One account using the existing /api/login endpoint. No Login screen is required for this classroom demo. Backend session and Seller checks remain enabled. This shared demo account is not a production authentication flow.
+
+- Submit sends POST /api/seller/offers with variant, condition, price, quantity, defects, notes and optional photos.
+- The pending page is shown only after the API confirms the database commit.
+- My sell orders reads GET /api/seller/offers from PostgreSQL. Browser localStorage is no longer used for offers. Old browser-only entries are not imported automatically.
+- Photo picker supports three JPG/PNG/WebP files up to 2 MB each, with previews and removal before submit. Photos are saved in assets along with the offer in one transaction.
+- New items support multiple units. Used items require defect details and quantity one.
+- Buy remains a placeholder in this team's UI.
+
+## Run
+
+Install Node.js 22+ and PostgreSQL 18. Run npm ci from the root, copy backend/.env.example to backend/.env, and configure your own PostgreSQL credentials.
+
+For a new empty database, create it in pgAdmin and run npm run db:setup once. For an existing owl database, run **npm run db:migrate** to fix the image indexes without replacing data. Do not run setup against an existing schema.
+
+Run **npm start** and open http://127.0.0.1:3188 (or the port in backend/.env). This computer's team demo uses port 3190. Run npm test for isolated database/API tests, including an actual image larger than the old PostgreSQL index limit.
+
+## Demo presentation flow
+
+UI submit -> authenticated API -> create_offer in PostgreSQL -> savePhotos -> COMMIT -> Pending page -> My sell orders reads DB.
+
+The old code still combines Service/Repository responsibilities in server.js and SQL functions. This fix connects the UI, not a refactor into separate layer files.
+
+## Existing Backend reference
+
 # Owl Pai Lei — Backend + Database
 
-Branch: `backend+database`. Based on the team repository main branch. This branch adds the Backend and PostgreSQL database only; it does not include Frontend files or modify main/assignment.
+Branch: `backend+database`. Based on the team repository main branch. The team main branch also contains the Frontend.
 
 ## Structure
 
@@ -20,7 +49,7 @@ Branch: `backend+database`. Based on the team repository main branch. This branc
 5. Run `npm run db:setup` once in the empty database. It refuses to overwrite an existing owl schema. Alternatively, execute backend/database/schema.sql in pgAdmin; use only one setup method.
 6. Run `npm start`. Backend is available at http://127.0.0.1:3188.
 
-GET / returns service information, not a website. GET /api/health tests the connection. The database SQL contains fictional demo data; local database contents and private credentials are not uploaded.
+GET / serves the team Frontend. GET /api/health tests the connection. The database SQL contains fictional demo data; local database contents and private credentials are not uploaded.
 
 ## Demo accounts
 
@@ -50,7 +79,7 @@ Seller offers require Admin approval. Approved details/photos cannot be edited. 
 
 ## Tests
 
-Run `npm test`. The database user needs CREATEDB; tests use temporary databases and port 3199. They do not change the live app database and run without any Frontend files.
+Run `npm test`. The database user needs CREATEDB; tests use temporary databases and port 3199. They do not change the live app database.
 
 ## Connecting the team's Frontend
 

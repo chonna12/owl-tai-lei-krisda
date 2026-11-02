@@ -455,3 +455,6 @@ a { color: inherit; text-decoration: none; }
 .avatar:hover { box-shadow: 0 0 0 3px #caa280; }
 .user-name { cursor: pointer; }
 .user-name:hover { text-decoration: underline; }
+
+/* DB-connected Seller demo */
+[hidden]{display:none!important}.demo-mode,.saved-offer-id{padding:12px 18px;border-radius:10px;background:#f0e2d3;color:#805d43;font-size:12px}.saved-offer-id{text-align:center;margin:18px}.sf-photo-drop{display:block;cursor:pointer}.sf-photo-drop-inner{display:flex;flex-direction:column;align-items:center;gap:7px}.sf-photo-drop input{display:block;max-width:100%;margin:12px auto 0;font:12px inherit}.sf-photo-previews{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}.sf-photo-preview{width:105px;height:105px;border:1px solid #dfc7b1;border-radius:10px;position:relative;overflow:hidden}.sf-photo-preview img,.item-photo{width:100%;height:100%;object-fit:cover;border-radius:10px}.sf-photo-preview button{position:absolute;right:4px;top:4px;width:24px;height:24px;border:0;border-radius:50%;background:#fff9f2;color:#79543b;font-size:18px;cursor:pointer}.sf-error{color:#a23d2f;font-size:13px;white-space:pre-wrap}.sf-submit-btn:disabled{opacity:.6;cursor:wait}.apm-thumb-placeholder{display:grid;place-items:center;font-size:30px}.mo-status-withdrawn{background:#eee5dc;color:#8e7c69}

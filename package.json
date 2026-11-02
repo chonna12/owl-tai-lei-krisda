@@ -12,6 +12,7 @@
     "start": "npm --workspace backend run start",
     "dev": "npm --workspace backend run dev",
     "db:setup": "npm --workspace backend run db:setup",
-    "test": "npm --workspace backend run test"
+    "test": "npm --workspace backend run test",
+    "db:migrate": "npm --workspace backend run db:migrate"
   }
 }
