@@ -7,8 +7,7 @@
     "start": "node --env-file=.env src/server.js",
     "dev": "node --env-file=.env --watch src/server.js",
     "db:setup": "node --env-file=.env scripts/setup-db.js",
-    "test": "node --env-file=.env tests/home-flow.mjs",
-    "db:migrate": "node --env-file=.env scripts/migrate-db.js"
+    "test": "node --env-file=.env tests/home-flow.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",

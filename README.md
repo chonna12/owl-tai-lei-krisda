@@ -15,7 +15,7 @@ The frontend automatically signs in to the fictional Demo Seller One account usi
 
 Install Node.js 22+ and PostgreSQL 18. Run npm ci from the root, copy backend/.env.example to backend/.env, and configure your own PostgreSQL credentials.
 
-For a new empty database, create it in pgAdmin and run npm run db:setup once. For an existing owl database, run **npm run db:migrate** to fix the image indexes without replacing data. Do not run setup against an existing schema.
+For a new empty database, create it in pgAdmin and run **npm run db:setup** once. The current schema.sql already includes the fixed image indexes. Existing databases that have already been updated can run the app directly. Do not run setup against an existing schema.
 
 Run **npm start** and open http://127.0.0.1:3188 (or the port in backend/.env). This computer's team demo uses port 3190. Run npm test for isolated database/API tests, including an actual image larger than the old PostgreSQL index limit.
 
