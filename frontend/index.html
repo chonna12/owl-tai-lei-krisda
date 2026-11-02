@@ -82,6 +82,180 @@
     </symbol>
   </svg>
 
-  <script src="app.js"></script>
+  <!-- ══════════════════════════════════════════════════════════
+       ACTION MODAL  — lives in the DOM, shown/hidden by JS
+  ══════════════════════════════════════════════════════════ -->
+  <div id="action-modal-overlay" class="modal-overlay" aria-modal="true" role="dialog">
+    <div class="apm-card">
+      <button class="apm-close" id="modal-close-btn" aria-label="Close">✕</button>
+
+      <div class="apm-header">
+        <div class="apm-thumb" id="apm-thumb"></div>
+        <div class="apm-header-info">
+          <h3 id="modal-product-title" class="apm-title"></h3>
+          <p  id="modal-product-brand" class="apm-brand"></p>
+        </div>
+      </div>
+
+      <div class="apm-divider"></div>
+
+      <div id="modal-market-details" class="apm-listings">
+        <div class="apm-loading">Loading listings…</div>
+      </div>
+
+      <div class="apm-actions">
+        <button id="modal-btn-sell" class="apm-btn apm-btn-sell">
+          <span class="apm-btn-icon">🏷️</span> Sell
+        </button>
+        <button id="modal-btn-buy" class="apm-btn apm-btn-buy">
+          <span class="apm-btn-icon">🛍️</span> Buy
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       PAGE TEMPLATES  — cloned by JS, never rendered directly
+  ══════════════════════════════════════════════════════════ -->
+
+  <!-- Sell Form -->
+  <template id="tpl-sell-form">
+    <div class="sf-page">
+      <header class="sf-header">
+        <a class="logo" href="/" aria-label="Owl Pai Lei home">
+          <svg class="owl" viewBox="0 0 60 56" aria-hidden="true">
+            <path d="M6 4 L20 12 H40 L54 4 V34 Q54 52 30 52 Q6 52 6 34 Z" fill="#8a5a3c"/>
+            <circle cx="20" cy="30" r="10" fill="#f6ece0"/><circle cx="40" cy="30" r="10" fill="#f6ece0"/>
+            <circle cx="20" cy="30" r="5"  fill="#8a5a3c"/><circle cx="40" cy="30" r="5"  fill="#8a5a3c"/>
+            <path d="M26 38 H34 L30 45 Z" fill="#e9c9a0"/>
+          </svg>
+          <span class="logo-text"><span class="logo-name">owl pai lei</span></span>
+        </a>
+        <button id="sf-cancel" class="sf-cancel-btn">✕ Cancel</button>
+      </header>
+
+      <div class="sf-progress">
+        <span class="sf-progress-step sf-step-done">Product</span>
+        <span class="sf-progress-arrow">›</span>
+        <span class="sf-progress-step sf-step-active">Listing details</span>
+        <span class="sf-progress-arrow">›</span>
+        <span class="sf-progress-step">Review</span>
+      </div>
+
+      <div class="sf-card">
+        <div class="sf-product-chip">
+          <div class="sf-chip-thumb"></div>
+          <div class="sf-chip-info">
+            <span class="sf-chip-name" id="sf-product-name"></span>
+            <span class="sf-chip-brand" id="sf-product-brand"></span>
+          </div>
+        </div>
+
+        <div class="sf-divider"></div>
+
+        <p class="sf-section-label">Condition</p>
+        <div class="sf-tabs">
+          <button type="button" id="tab-new"  class="sf-tab sf-tab-active">✨ First hand</button>
+          <button type="button" id="tab-used" class="sf-tab">🔄 Second hand</button>
+        </div>
+
+        <form id="offer-form" class="sf-form">
+
+          <div class="sf-field">
+            <label class="sf-label">Product photo</label>
+            <div class="sf-photo-drop">
+              <div class="sf-photo-drop-inner">
+                <span class="sf-photo-icon">📷</span>
+                <span class="sf-photo-text">Tap to add photos</span>
+                <span class="sf-photo-sub">JPG · PNG · up to 10 MB</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="sf-field">
+            <label class="sf-label" for="form-variant">Variant / Size</label>
+            <div class="sf-select-wrap">
+              <select id="form-variant" class="sf-select" required></select>
+            </div>
+          </div>
+
+          <div class="sf-field">
+            <label class="sf-label" for="form-price">Asking price</label>
+            <div class="sf-input-wrap">
+              <span class="sf-input-prefix">THB</span>
+              <input type="number" id="form-price" class="sf-input sf-input-prefix-pad"
+                     placeholder="0.00" min="1" step="0.01" required>
+            </div>
+          </div>
+
+          <div id="used-fields" class="sf-field" style="display:none;">
+            <label class="sf-label" for="form-defects">Condition details</label>
+            <textarea id="form-defects" class="sf-textarea"
+              placeholder="Describe any wear, scuffs, missing items, included receipt…"></textarea>
+          </div>
+
+          <button type="submit" id="sf-submit" class="sf-submit-btn">
+            Confirm listing →
+          </button>
+
+        </form>
+      </div>
+    </div>
+  </template>
+
+  <!-- Pending Approval -->
+  <template id="tpl-pending">
+    <div class="pa-page">
+      <header class="sf-header">
+        <a class="logo" href="/" aria-label="Owl Pai Lei home">
+          <svg class="owl" viewBox="0 0 60 56" aria-hidden="true">
+            <path d="M6 4 L20 12 H40 L54 4 V34 Q54 52 30 52 Q6 52 6 34 Z" fill="#8a5a3c"/>
+            <circle cx="20" cy="30" r="10" fill="#f6ece0"/><circle cx="40" cy="30" r="10" fill="#f6ece0"/>
+            <circle cx="20" cy="30" r="5"  fill="#8a5a3c"/><circle cx="40" cy="30" r="5"  fill="#8a5a3c"/>
+            <path d="M26 38 H34 L30 45 Z" fill="#e9c9a0"/>
+          </svg>
+          <span class="logo-text"><span class="logo-name">owl pai lei</span></span>
+        </a>
+      </header>
+      <div class="pa-center">
+        <div class="pa-card">
+          <div class="pa-owl-emoji">🦉</div>
+          <h2 class="pa-title">Pending</h2>
+          <span class="pa-badge">Approval</span>
+          <p class="pa-sub">Our team is checking your listing.</p>
+          <div class="pa-actions">
+            <button id="pa-view-orders" class="pa-btn-outline">View my orders</button>
+            <button id="pa-home"        class="pa-btn-primary">Back to home</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- My Sell Orders -->
+  <template id="tpl-my-orders">
+    <div class="mo-page">
+      <header class="sf-header">
+        <a class="logo" href="/" aria-label="Owl Pai Lei home">
+          <svg class="owl" viewBox="0 0 60 56" aria-hidden="true">
+            <path d="M6 4 L20 12 H40 L54 4 V34 Q54 52 30 52 Q6 52 6 34 Z" fill="#8a5a3c"/>
+            <circle cx="20" cy="30" r="10" fill="#f6ece0"/><circle cx="40" cy="30" r="10" fill="#f6ece0"/>
+            <circle cx="20" cy="30" r="5"  fill="#8a5a3c"/><circle cx="40" cy="30" r="5"  fill="#8a5a3c"/>
+            <path d="M26 38 H34 L30 45 Z" fill="#e9c9a0"/>
+          </svg>
+          <span class="logo-text"><span class="logo-name">owl pai lei</span></span>
+        </a>
+        <button id="mo-back" class="sf-cancel-btn">← Back</button>
+      </header>
+      <div class="mo-container">
+        <h2 class="mo-title">My sell orders</h2>
+        <div id="mo-list" class="mo-list">
+          <div class="mo-loading">Loading your orders…</div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script src="approve.js"></script>
 </body>
 </html>
