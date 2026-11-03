@@ -17,7 +17,7 @@ Install Node.js 22+ and PostgreSQL 18. Run npm ci from the root, copy backend/.e
 
 For a new empty database, create it in pgAdmin and run **npm run db:setup** once. The current schema.sql already includes the fixed image indexes. Existing databases that have already been updated can run the app directly. Do not run setup against an existing schema.
 
-Run **npm start** and open http://127.0.0.1:3188 (or the port in backend/.env). This computer's team demo uses port 3190. Run npm test for isolated database/API tests, including an actual image larger than the old PostgreSQL index limit.
+Run **npm start** and open http://127.0.0.1:3188 (or the port in backend/.env). This computer's team demo uses port 3190.
 
 ## Demo presentation flow
 
@@ -36,7 +36,6 @@ Branch: `backend+database`. Based on the team repository main branch. The team m
 - backend/src/: Express API, session authentication, role checks and photo validation
 - backend/database/schema.sql: PostgreSQL schema (31 tables), workflow functions and fictional seed data
 - backend/scripts/: safe one-time database installer
-- backend/tests/: isolated database/API tests; no Frontend dependency
 - docs/: ER, data dictionary, business rules and design notes
 - package.json / package-lock.json: root npm workspace commands
 
@@ -79,7 +78,7 @@ Seller offers require Admin approval. Approved details/photos cannot be edited. 
 
 ## Tests
 
-Run `npm test`. The database user needs CREATEDB; tests use temporary databases and port 3199. They do not change the live app database.
+The automated test suite is no longer included. Verify the seller workflow manually: submit an offer with a photo, reload the offers list, and confirm that approved offers cannot be edited.
 
 ## Connecting the team's Frontend
 
