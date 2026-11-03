@@ -210,7 +210,7 @@ async function showSellForm(product) {
     finally { readingPhotos = false; btn.disabled = false; photoInput.value = ''; }
   });
 
-  // Form submit → POST to API → create_offer/savePhotos → PostgreSQL
+  // Form submit → POST to API → create_offer + savePhotos → PostgreSQL
   // Shows success only after HTTP 201.
   page.querySelector('#offer-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -226,9 +226,16 @@ async function showSellForm(product) {
           quantity: Number(page.querySelector('#form-quantity').value),
           defects: selectedCondition === 'used' ? page.querySelector('#form-defects').value.trim() : '',
           notes: page.querySelector('#form-notes').value.trim(),
-          photos
+          photos  // sent to backend and saved in the assets table
         })
       });
+      // Also cache photos in localStorage so My Orders can show them even
+      // before the backend's CDN/image pipeline makes them available.
+      if (photos.length > 0) {
+        try {
+          localStorage.setItem('offer_photos_' + result.offer_id, JSON.stringify(photos));
+        } catch { /* ignore QuotaExceededError */ }
+      }
       showPendingResult(result.offer_id);
     } catch (error) { message.textContent = error.message; }
     finally { btn.disabled = false; btn.textContent = 'Confirm listing →'; }
@@ -252,17 +259,26 @@ async function showMyOrders() {
 
   const list = page.querySelector('#mo-list');
 
-  // Read only this authenticated seller's records from PostgreSQL,
-  // never from localStorage.
   let offers;
   try {
     const data = await sellerRequest('/api/seller/offers');
-    offers = data.offers.map(offer => ({
-      ...offer,
-      product_name: offer.name,
-      price: Number(offer.asking_price),
-      image: (offer.photos || []).find(photo => /^data:image\/(png|jpeg|webp);base64,/.test(photo)) || null
-    }));
+    offers = data.offers.map(offer => {
+      // Prefer DB photo; fall back to photo saved in localStorage at submit time
+      const dbPhoto = (offer.photos || []).find(p => /^data:image\/(png|jpeg|webp);base64,/.test(p)) || null;
+      let localPhoto = null;
+      if (!dbPhoto) {
+        try {
+          const stored = JSON.parse(localStorage.getItem('offer_photos_' + offer.offer_id) || '[]');
+          localPhoto = stored[0] || null;
+        } catch { /* ignore parse errors */ }
+      }
+      return {
+        ...offer,
+        product_name: offer.name,
+        price: Number(offer.asking_price),
+        image: dbPhoto || localPhoto
+      };
+    });
   } catch (error) { list.textContent = error.message; return; }
 
   if (offers.length === 0) {

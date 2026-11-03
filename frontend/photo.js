@@ -21,8 +21,7 @@ function renderPhotoPreviews(container, photos, onRemove) {
 
 /**
  * Read a single image File as a base-64 data-URL.
- * Validates type (JPG/PNG/WebP), size (≤ 2 MB), and that the file is a
- * decodable image before resolving.
+ * Validates type (JPG/PNG/WebP) and size (≤ 2 MB) before resolving.
  */
 async function readItemPhoto(file) {
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type))
@@ -43,4 +42,3 @@ async function readItemPhoto(file) {
   });
   return data;
 }
-
