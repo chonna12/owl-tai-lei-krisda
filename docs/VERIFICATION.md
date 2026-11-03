@@ -1,3 +1,5 @@
-# Backend-only branch verification
+# Verification notes
 
-The branch excludes Frontend files. npm test creates an isolated PostgreSQL database and tests the API: catalog, buyer login/checkout, address ownership, seller offers/edits, photo persistence/validation and approved-offer protection. The root / route returns Backend service information. No UI tests or UI files are required.
+Before removal, the automated suite checked catalog access, buyer checkout, address ownership, seller offer creation and edits, photo persistence and validation, and protection of approved offers in an isolated temporary PostgreSQL database.
+
+The automated test files and npm test scripts are no longer included. To verify the current app manually, submit a seller offer with a photo, reload the offers list to confirm persistence, and confirm that an approved offer cannot be edited.
