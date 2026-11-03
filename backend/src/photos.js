@@ -1,4 +1,5 @@
 // Small classroom prototype: images live in the existing assets table.
+// [ตรวจรูป] server.js เรียกก่อนบันทึก: ไม่เกิน 3 รูป รูปละ 2 MB
 export function validatePhotos(photos){
   if(photos===undefined)return;
   if(!Array.isArray(photos)||photos.length>3)throw Error('Attach up to 3 photos.');
@@ -13,8 +14,11 @@ export function validatePhotos(photos){
     if(unique.has(photo))throw Error('The same photo was attached twice.');unique.add(photo);
   }
 }
+// [บันทึกรูป] server.js ส่งมา → เก็บใน PostgreSQL ตาราง assets
 export async function savePhotos(client,offerId,photos){
   if(photos===undefined)return;
+  // [แทนชุดเดิม] ลบเฉพาะรูปของ offer_id นี้ ภายใน Transaction เดียวกัน
   await client.query('DELETE FROM assets WHERE offer_id=$1',[offerId]);
+  // [เชื่อมข้อมูล] assets.offer_id → seller_offers.offer_id; ไม่ได้สร้างไฟล์ในโฟลเดอร์
   for(const [index,photo] of photos.entries())await client.query('INSERT INTO assets(offer_id,file_reference,sort_order) VALUES($1,$2,$3)',[offerId,photo,index]);
 }

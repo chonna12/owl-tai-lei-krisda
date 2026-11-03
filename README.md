@@ -25,6 +25,14 @@ UI submit -> authenticated API -> create_offer in PostgreSQL -> savePhotos -> CO
 
 The old code still combines Service/Repository responsibilities in server.js and SQL functions. This fix connects the UI, not a refactor into separate layer files.
 
+## Current database scope
+
+The installer now creates 22 tables for all currently implemented API routes, including the tables used indirectly by checkout, queues, sales and QC views. It is not the complete future marketplace schema.
+
+Removed tables: seller_verifications, wishlist_items, carts, payments, cancellation_requests, shipments, refunds, seller_charges and payout_items. Their unexposed workflow functions are also excluded. Existing frontend and API routes remain unchanged. Seller payout records remain readable, but creating or paying payouts is not implemented by this API.
+
+Install only in a new empty database. This change does not drop tables in an existing database. Existing ER and full-project dictionary documents describe the earlier 31-table design; use docs/CURRENT_DATABASE.md for the current scope.
+
 ## Existing Backend reference
 
 # Owl Pai Lei — Backend + Database
@@ -34,7 +42,7 @@ Branch: `backend+database`. Based on the team repository main branch. The team m
 ## Structure
 
 - backend/src/: Express API, session authentication, role checks and photo validation
-- backend/database/schema.sql: PostgreSQL schema (31 tables), workflow functions and fictional seed data
+- backend/database/schema.sql: PostgreSQL schema (22 tables), workflow functions and fictional seed data
 - backend/scripts/: safe one-time database installer
 - docs/: ER, data dictionary, business rules and design notes
 - package.json / package-lock.json: root npm workspace commands

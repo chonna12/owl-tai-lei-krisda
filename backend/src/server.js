@@ -4,6 +4,7 @@ import {verifyPassword,newToken,tokenHash,readToken} from './security.js';
 import {validatePhotos,savePhotos} from './photos.js';
 import {fileURLToPath} from 'node:url';
 
+// [เชื่อม DB] ใช้ค่าจาก backend/.env ติดต่อ PostgreSQL ใน schema owl
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   options: '-c search_path=owl,public',
@@ -11,6 +12,7 @@ const pool = new pg.Pool({
 });
 const app = express();
 app.disable('x-powered-by');
+// [รับ JSON] แปลงข้อมูลจาก frontend/approve.js มาไว้ใน req.body
 app.use(express.json({limit:'9mb'}));
 app.use((req,res,next)=>{
   res.setHeader('X-Content-Type-Options','nosniff');
@@ -21,6 +23,7 @@ app.use((req,res,next)=>{
 });
 app.use(express.static(fileURLToPath(new URL('../../frontend', import.meta.url))));
 const attempts=new Map();
+// [Login] รับบัญชีจาก UI → ตรวจ users → สร้าง sessions → ส่ง Cookie
 app.post('/api/login',async(req,res)=>{
   const key=req.ip,now=Date.now();let attempt=attempts.get(key);
   if(!attempt||attempt.until<now){attempt={count:0,until:now+300000};attempts.set(key,attempt);}
@@ -35,11 +38,13 @@ app.post('/api/login',async(req,res)=>{
   res.cookie('owl_session',token,{httpOnly:true,sameSite:'strict',maxAge:8*3600000,path:'/'});
   attempts.delete(key);res.json({user:{name:user.full_name,email:user.email,canSell:user.seller_status==='active'}});
 });
+// [สิทธิ์] ตรวจ sessions + users + roles ก่อนให้ Seller ทำรายการ
 async function seller(req,res,next){
   const {rows}=await pool.query(`SELECT u.user_id,u.full_name,u.email FROM sessions s JOIN users u USING(user_id)
     WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active' AND u.seller_status='active'
     AND EXISTS(SELECT 1 FROM user_roles ur JOIN roles r USING(role_id) WHERE ur.user_id=u.user_id AND r.name='seller')`,[tokenHash(readToken(req))]);
   if(!rows.length)return res.status(401).json({error:'Please sign in with a seller account'});
+  // [เจ้าของ] ใช้ user_id จาก Session ไม่เชื่อรหัส Seller ที่กรอกจากหน้าเว็บ
   req.seller=rows[0];next();
 }
 async function account(req,res,next){
@@ -50,6 +55,7 @@ async function account(req,res,next){
 }
 app.get('/api/me',account,(req,res)=>res.json({user:{name:req.seller.full_name,email:req.seller.email,canSell:req.seller.seller_status==='active'}}));
 app.post('/api/logout',account,async(req,res)=>{await pool.query('UPDATE sessions SET revoked_at=now() WHERE token_hash=$1',[tokenHash(readToken(req))]);res.clearCookie('owl_session',{path:'/'});res.json({ok:true});});
+// [อ่านรายการ] UI → API → JOIN ข้อเสนอ สินค้า รูป คิว → ตอบกลับ UI
 app.get('/api/seller/offers',seller,async(req,res)=>{
   const {rows}=await pool.query(`SELECT f.*,p.name,p.brand_name,c.name AS category,v.size,v.color,
     e.position AS queue_position,(g.active_offer_id=f.offer_id) AS is_active,
@@ -59,26 +65,35 @@ app.get('/api/seller/offers',seller,async(req,res)=>{
     LEFT JOIN queue_groups g ON g.group_id=e.group_id WHERE f.seller_id=$1 ORDER BY f.created_at DESC,f.offer_id DESC`,[req.seller.user_id]);
   res.json({offers:rows});
 });
+// [ตรวจข้อมูล] ตรวจราคา จำนวน และส่งรูปให้ photos.js ตรวจ
 function offerInput(req,res,next){
   const b=req.body;
   try{validatePhotos(b.photos);}catch(e){return res.status(400).json({error:e.message});}
   if(!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>100000||!Number.isFinite(b.price)||b.price<=0||b.price>9999999999||Math.abs(b.price*100-Math.round(b.price*100))>0.0001||typeof b.defects!=='string'||b.defects.length>2000||typeof b.notes!=='string'||b.notes.length>2000)return res.status(400).json({error:'Enter a valid price, quantity and item details'});
   next();
 }
+// [API ลงขาย] รับ POST จาก frontend/approve.js → ตรวจสิทธิ์ → ตรวจข้อมูล
 app.post('/api/seller/offers',seller,offerInput,async(req,res)=>{
   const b=req.body;if(!/^[1-9][0-9]{0,17}$/.test(String(b.variantId))||!['new','used'].includes(b.condition))return res.status(400).json({error:'Select a product variant and condition'});
+  // [Repository ในไฟล์นี้] ขอ Connection ไป DB เพื่อใช้ Transaction เดียวกัน
   const client=await pool.connect();
+  // [บันทึก] BEGIN → create_offer ใน DB → photos.js → COMMIT → ส่ง offer_id
+  // [ผิดพลาด] ROLLBACK ย้อนทั้งข้อเสนอและรูป; release คืน Connection
+  // [$1 ถึง $7] ส่งค่าแยกจาก SQL ช่วยป้องกัน SQL Injection
   try{await client.query('BEGIN');const {rows}=await client.query('SELECT create_offer($1,$2,$3,$4,$5,$6,$7) AS offer_id',[req.seller.user_id,b.variantId,b.condition,b.price,b.quantity,b.defects,b.notes]);await savePhotos(client,rows[0].offer_id,b.photos);await client.query('COMMIT');res.status(201).json(rows[0]);}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 });
+// [แก้ไข] เรียก edit_pending_offer ใน DB; แก้ได้เฉพาะ Pending ของตน
 app.patch('/api/seller/offers/:id',seller,offerInput,async(req,res)=>{
   if(!/^[1-9][0-9]{0,17}$/.test(req.params.id))return res.status(400).json({error:'Invalid offer ID'});
   const b=req.body,client=await pool.connect();
   try{await client.query('BEGIN');await client.query('SELECT edit_pending_offer($1,$2,$3,$4,$5,$6)',[req.seller.user_id,req.params.id,b.price,b.quantity,b.defects,b.notes]);await savePhotos(client,req.params.id,b.photos);await client.query('COMMIT');res.json({ok:true});}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 });
+// [ถอนขาย] เปลี่ยนสถานะใน DB และนำออกจากคิว เก็บประวัติเดิม
 app.post('/api/seller/offers/:id/withdraw',seller,async(req,res)=>{
   if(!/^[1-9][0-9]{0,17}$/.test(req.params.id))return res.status(400).json({error:'Invalid offer ID'});
   await pool.query('SELECT withdraw_offer($1,$2)',[req.seller.user_id,req.params.id]);res.json({ok:true});
 });
+// [ติดตามขาย] อ่าน View ยอดขาย ผล QC และ payouts → ตอบ JSON ให้ UI
 app.get('/api/seller/sales',seller,async(req,res)=>{
   const sales=await pool.query('SELECT * FROM seller_sales WHERE seller_id=$1 ORDER BY order_id DESC',[req.seller.user_id]);
   const scores=await pool.query('SELECT * FROM seller_qc_scores WHERE seller_id=$1',[req.seller.user_id]);

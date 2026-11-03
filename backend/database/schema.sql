@@ -1,4 +1,6 @@
--- Owl Pai Lei compact database: 31 tables. Install once in an EMPTY database.
+-- Owl Pai Lei current API database: 22 tables. Install once in an EMPTY database.
+-- Retains all tables queried by server.js and their required SQL dependencies.
+-- Unimplemented payment, refund, shipment, wishlist and cart workflows are excluded.
 BEGIN;
 
 -- 001_schema.sql
@@ -60,19 +62,6 @@ CREATE TABLE seller_bank_accounts (
   is_verified BOOLEAN NOT NULL DEFAULT false,
   archived BOOLEAN NOT NULL DEFAULT false
 );
-CREATE TABLE seller_verifications (
-  verification_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  seller_id BIGINT NOT NULL REFERENCES users(user_id),
-  id_document_reference TEXT NOT NULL,
-  bank_document_reference TEXT NOT NULL,
-  status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
-  reviewer_id BIGINT REFERENCES users,
-  review_note TEXT,
-  submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  reviewed_at TIMESTAMPTZ,
-  CHECK ((status='pending' AND reviewer_id IS NULL AND reviewed_at IS NULL)
-    OR (status<>'pending' AND reviewer_id IS NOT NULL AND reviewed_at IS NOT NULL))
-);
 
 CREATE TABLE categories (
   category_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -106,6 +95,7 @@ CREATE TABLE platform_settings (
   note TEXT NOT NULL
 );
 
+-- [ข้อมูลขาย] server.js เรียก create_offer เพื่อเพิ่มรายการในตารางนี้
 CREATE TABLE seller_offers (
   offer_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   seller_id BIGINT NOT NULL REFERENCES users(user_id),
@@ -145,22 +135,6 @@ CREATE TABLE queue_entries (
   UNIQUE(group_id,position)
 );
 
-CREATE TABLE wishlist_items (
-  user_id BIGINT NOT NULL REFERENCES users,
-  product_id BIGINT NOT NULL REFERENCES products,
-  added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY(user_id,product_id)
-);
-CREATE TABLE carts (
-  cart_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT NOT NULL UNIQUE REFERENCES users,
-  variant_id BIGINT REFERENCES product_variants,
-  condition VARCHAR(10) CHECK(condition IN ('new','used')),
-  quantity SMALLINT NOT NULL DEFAULT 1 CHECK(quantity=1),
-  added_at TIMESTAMPTZ,
-  CHECK ((variant_id IS NULL AND condition IS NULL AND added_at IS NULL) OR
-    (variant_id IS NOT NULL AND condition IS NOT NULL AND added_at IS NOT NULL))
-);
 -- PK(cart_id) deliberately limits each cart to one selected item.
 CREATE TABLE coupons (
   coupon_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -228,29 +202,6 @@ CREATE TABLE coupon_redemptions (
   redeemed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(coupon_id,user_id)
 );
-CREATE TABLE payments (
-  payment_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  order_id BIGINT NOT NULL REFERENCES orders,
-  amount NUMERIC(12,2) NOT NULL CHECK(amount>=0),
-  method VARCHAR(30) NOT NULL,
-  status VARCHAR(20) NOT NULL CHECK(status IN ('pending','failed','captured')),
-  reference VARCHAR(120) NOT NULL UNIQUE,
-  verified_by BIGINT REFERENCES users,
-  paid_at TIMESTAMPTZ,
-  CHECK((status='captured')=(paid_at IS NOT NULL)),
-  CHECK(status<>'captured' OR verified_by IS NOT NULL)
-);
-CREATE UNIQUE INDEX one_captured_payment ON payments(order_id) WHERE status='captured';
-CREATE TABLE cancellation_requests (
-  request_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  order_id BIGINT NOT NULL UNIQUE REFERENCES orders,
-  buyer_id BIGINT NOT NULL REFERENCES users,
-  reason TEXT NOT NULL CHECK(length(trim(reason))>0),
-  status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
-  reviewed_by BIGINT REFERENCES users,
-  reviewed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
 
 CREATE TABLE qc_inspections (
   inspection_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -260,50 +211,6 @@ CREATE TABLE qc_inspections (
   seller_score SMALLINT NOT NULL CHECK(seller_score BETWEEN 1 AND 5),
   notes TEXT NOT NULL CHECK(length(trim(notes))>0),
   inspected_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE TABLE shipments (
-  shipment_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  order_item_id BIGINT NOT NULL REFERENCES order_items,
-  leg VARCHAR(20) NOT NULL CHECK(leg IN ('seller_to_hub','hub_to_buyer','hub_to_seller')),
-  carrier VARCHAR(80) NOT NULL,
-  tracking_number VARCHAR(120) NOT NULL,
-  status VARCHAR(20) NOT NULL DEFAULT 'in_transit' CHECK(status IN ('in_transit','delivered')),
-  shipping_cost NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK(shipping_cost>=0),
-  payer VARCHAR(10) NOT NULL CHECK(payer IN ('seller','buyer','platform')),
-  created_by BIGINT NOT NULL REFERENCES users,
-  shipped_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  delivered_at TIMESTAMPTZ,
-  UNIQUE(order_item_id,leg),
-  UNIQUE(carrier,tracking_number),
-  CHECK((status='delivered')=(delivered_at IS NOT NULL)),
-  CHECK(leg<>'hub_to_seller' OR payer='seller')
-);
-CREATE TABLE refunds (
-  refund_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  order_id BIGINT NOT NULL UNIQUE REFERENCES orders,
-  payment_id BIGINT NOT NULL UNIQUE REFERENCES payments,
-  amount NUMERIC(12,2) NOT NULL CHECK(amount>=0),
-  reason TEXT NOT NULL,
-  status VARCHAR(20) NOT NULL DEFAULT 'requested' CHECK(status IN ('requested','approved','paid')),
-  approved_by BIGINT REFERENCES users,
-  approved_at TIMESTAMPTZ,
-  paid_by BIGINT REFERENCES users,
-  paid_at TIMESTAMPTZ,
-  transfer_reference VARCHAR(120) UNIQUE,
-  CHECK((status IN ('approved','paid'))=(approved_by IS NOT NULL AND approved_at IS NOT NULL)),
-  CHECK((status='paid')=(paid_by IS NOT NULL AND paid_at IS NOT NULL AND transfer_reference IS NOT NULL))
-);
-CREATE TABLE seller_charges (
-  charge_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  seller_id BIGINT NOT NULL REFERENCES users(user_id),
-  shipment_id BIGINT NOT NULL UNIQUE REFERENCES shipments,
-  amount NUMERIC(12,2) NOT NULL CHECK(amount>=0),
-  reason VARCHAR(30) NOT NULL DEFAULT 'return_shipping' CHECK(reason='return_shipping'),
-  status VARCHAR(20) NOT NULL DEFAULT 'unpaid' CHECK(status IN ('unpaid','paid')),
-  payment_reference VARCHAR(120),
-  recorded_by BIGINT NOT NULL REFERENCES users,
-  paid_at TIMESTAMPTZ,
-  CHECK((status='paid')=(payment_reference IS NOT NULL AND paid_at IS NOT NULL))
 );
 CREATE TABLE payouts (
   payout_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -324,12 +231,6 @@ CREATE TABLE payouts (
   CHECK((status IN ('approved','paid'))=(approved_by IS NOT NULL AND approved_at IS NOT NULL)),
   CHECK((status='paid')=(paid_by IS NOT NULL AND paid_at IS NOT NULL AND transfer_reference IS NOT NULL))
 );
-CREATE TABLE payout_items (
-  payout_id BIGINT NOT NULL REFERENCES payouts,
-  order_item_id BIGINT NOT NULL UNIQUE REFERENCES order_items,
-  amount NUMERIC(12,2) NOT NULL CHECK(amount>0),
-  PRIMARY KEY(payout_id,order_item_id)
-);
 CREATE TABLE notifications (
   notification_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users,
@@ -343,6 +244,7 @@ CREATE TABLE notifications (
 CREATE INDEX notifications_user_idx ON notifications(user_id,is_read,created_at);
 
 -- Image/evidence ownership retains real FKs; no JSON array or polymorphic owner ID.
+-- [รูป] photos.js บันทึกที่นี่ โดย offer_id ชี้กลับ seller_offers
 CREATE TABLE assets (
  asset_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  product_id BIGINT REFERENCES products,
@@ -364,17 +266,13 @@ CREATE UNIQUE INDEX assets_qc_file ON assets(inspection_id,md5(file_reference)) 
 -- One append-only journal; important business references keep FK constraints.
 CREATE TABLE activity_logs (
  log_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
- event_source VARCHAR(10) NOT NULL CHECK(event_source IN ('queue','shipment','order','audit')),
+ event_source VARCHAR(10) NOT NULL CHECK(event_source IN ('queue','order','audit')),
  event_type VARCHAR(60) NOT NULL DEFAULT 'status_changed',
  actor_id BIGINT REFERENCES users,
  order_id BIGINT REFERENCES orders,
- shipment_id BIGINT REFERENCES shipments,
  group_id BIGINT REFERENCES queue_groups,
  offer_id BIGINT REFERENCES seller_offers,
- refund_id BIGINT REFERENCES refunds,
  payout_id BIGINT REFERENCES payouts,
- verification_id BIGINT REFERENCES seller_verifications,
- charge_id BIGINT REFERENCES seller_charges,
  status VARCHAR(40),
  location VARCHAR(150),
  note TEXT NOT NULL DEFAULT '',
@@ -384,13 +282,11 @@ CREATE TABLE activity_logs (
  source_record_id BIGINT,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  CHECK((event_source='queue' AND group_id IS NOT NULL) OR
-       (event_source='shipment' AND shipment_id IS NOT NULL AND actor_id IS NOT NULL) OR
        (event_source='order' AND order_id IS NOT NULL AND status IS NOT NULL AND actor_id IS NOT NULL) OR
        (event_source='audit' AND entity_type IS NOT NULL AND entity_id IS NOT NULL AND actor_id IS NOT NULL)),
  UNIQUE(event_source,source_record_id)
 );
 CREATE INDEX activity_order_idx ON activity_logs(order_id,created_at);
-CREATE INDEX activity_shipment_idx ON activity_logs(shipment_id,created_at);
 CREATE INDEX activity_group_idx ON activity_logs(group_id,created_at);
 CREATE INDEX activity_actor_idx ON activity_logs(actor_id,created_at);
 
@@ -445,6 +341,7 @@ CREATE FUNCTION immutable_record() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN RAISE EXCEPTION 'Final or historical records cannot be edited or deleted'; END; $$;
 CREATE TRIGGER immutable_qc BEFORE UPDATE OR DELETE ON qc_inspections FOR EACH ROW EXECUTE FUNCTION immutable_record();
 
+-- [กฎลงขาย] ตรวจ Seller และ Variant → INSERT ข้อเสนอ Pending → คืน offer_id
 CREATE FUNCTION create_offer(p_seller BIGINT,p_variant BIGINT,p_condition TEXT,p_price NUMERIC,
  p_quantity INTEGER,p_defects TEXT DEFAULT '',p_notes TEXT DEFAULT '') RETURNS BIGINT
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
@@ -460,6 +357,7 @@ BEGIN
  PERFORM log_action(p_seller,'offer_created','seller_offer',v_id);
  RETURN v_id;
 END; $$;
+-- [กฎแก้ไข] ต้องเป็นเจ้าของและสถานะ Pending เท่านั้น
 CREATE FUNCTION edit_pending_offer(p_seller BIGINT,p_offer BIGINT,p_price NUMERIC,p_quantity INTEGER,p_defects TEXT,p_notes TEXT DEFAULT '')
 RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE f seller_offers;
@@ -605,208 +503,6 @@ BEGIN
  RETURN v_order;
 END; $$;
 
-CREATE FUNCTION confirm_payment(p_admin BIGINT,p_order BIGINT,p_reference TEXT,p_method TEXT DEFAULT 'demo') RETURNS BIGINT
-LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE o orders; i order_items; f seller_offers; g BIGINT; head BIGINT; paid payments; v_payment BIGINT; d NUMERIC;
-BEGIN
- PERFORM require_role(p_admin,'admin');
- SELECT * INTO i FROM order_items WHERE order_id=p_order;
- IF NOT FOUND THEN RAISE EXCEPTION 'Order item missing'; END IF;
- g:=ensure_group(i.variant_id,i.condition_snapshot);
- SELECT * INTO o FROM orders WHERE order_id=p_order FOR UPDATE;
- SELECT * INTO paid FROM payments WHERE order_id=p_order AND status='captured';
- IF FOUND THEN
-  IF paid.reference=p_reference THEN RETURN paid.payment_id; ELSE RAISE EXCEPTION 'Order already paid'; END IF;
- END IF;
- IF o.status<>'awaiting_payment' THEN RAISE EXCEPTION 'Order is not awaiting payment'; END IF;
- head:=advance_queue(g);
- IF head IS DISTINCT FROM i.offer_id THEN RAISE EXCEPTION 'Queue changed; create a new order before payment'; END IF;
- SELECT * INTO f FROM seller_offers WHERE offer_id=i.offer_id FOR UPDATE;
- IF f.status<>'approved' OR f.available_quantity<1 OR f.asking_price<>i.unit_price THEN RAISE EXCEPTION 'Offer unavailable or price changed'; END IF;
- d:=discount_for(o.coupon_id,o.buyer_id,o.item_subtotal+o.platform_fee);
- IF d<>o.discount THEN RAISE EXCEPTION 'Coupon changed; create a new order'; END IF;
- INSERT INTO payments(order_id,amount,method,status,reference,verified_by,paid_at)
- VALUES(p_order,o.total,p_method,'captured',p_reference,p_admin,now()) RETURNING payment_id INTO v_payment;
- IF o.coupon_id IS NOT NULL THEN INSERT INTO coupon_redemptions(coupon_id,user_id,order_id,discount_applied)
- VALUES(o.coupon_id,o.buyer_id,p_order,o.discount); END IF;
- UPDATE seller_offers SET available_quantity=available_quantity-1 WHERE offer_id=i.offer_id RETURNING * INTO f;
- UPDATE orders SET status='processing' WHERE order_id=p_order;
- UPDATE order_items SET fulfillment_status='awaiting_seller_shipment' WHERE order_id=p_order;
- UPDATE queue_groups SET active_offer_id=NULL,active_since=NULL WHERE group_id=g;
- IF f.available_quantity>0 THEN PERFORM queue_add(g,f.offer_id,'sold');
- ELSE DELETE FROM queue_entries WHERE offer_id=f.offer_id; INSERT INTO activity_logs(event_source,group_id,offer_id,event_type) VALUES('queue',g,f.offer_id,'sold'); END IF;
- PERFORM advance_queue(g);
- PERFORM log_order(p_order,'awaiting_seller_shipment',p_admin,'Payment recorded. Stock reserved; queue rotated.');
- INSERT INTO notifications(user_id,order_id,type,message) VALUES(i.seller_id,p_order,'sale_paid','An item sold. Send it to the QC hub.');
- RETURN v_payment;
-END; $$;
-
-CREATE FUNCTION shipment_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE i order_items;
-BEGIN
- SELECT * INTO i FROM order_items WHERE order_item_id=NEW.order_item_id FOR UPDATE;
- IF NEW.leg='seller_to_hub' THEN
-  PERFORM require_role(NEW.created_by,'seller');
-  IF NEW.created_by<>i.seller_id OR i.fulfillment_status<>'awaiting_seller_shipment' THEN RAISE EXCEPTION 'Only owning seller can ship this item to hub'; END IF;
- ELSIF NEW.leg='hub_to_buyer' THEN
-  PERFORM require_role(NEW.created_by,'admin');
-  IF i.fulfillment_status<>'ready_to_ship' OR NOT EXISTS(SELECT 1 FROM qc_inspections WHERE order_item_id=i.order_item_id AND result='pass')
-  THEN RAISE EXCEPTION 'Saved QC PASS required before buyer dispatch'; END IF;
- ELSE
-  PERFORM require_role(NEW.created_by,'qc');
-  IF i.fulfillment_status<>'qc_failed' THEN RAISE EXCEPTION 'Only QC-failed items can be returned'; END IF;
- END IF;
- RETURN NEW;
-END; $$;
-CREATE TRIGGER check_shipment BEFORE INSERT ON shipments FOR EACH ROW EXECUTE FUNCTION shipment_guard();
-CREATE FUNCTION create_shipment(p_actor BIGINT,p_order BIGINT,p_leg TEXT,p_carrier TEXT,p_tracking TEXT,p_cost NUMERIC DEFAULT 0) RETURNS BIGINT
-LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE i order_items; v_ship BIGINT; next_state TEXT; who TEXT;
-BEGIN
- SELECT * INTO i FROM order_items WHERE order_id=p_order FOR UPDATE;
- IF NOT FOUND THEN RAISE EXCEPTION 'Order missing'; END IF;
- next_state:=CASE p_leg WHEN 'seller_to_hub' THEN 'inbound' WHEN 'hub_to_buyer' THEN 'outbound' WHEN 'hub_to_seller' THEN 'return_in_transit' END;
- IF next_state IS NULL THEN RAISE EXCEPTION 'Unknown shipping leg'; END IF;
- who:=CASE WHEN p_leg='hub_to_buyer' THEN 'buyer' ELSE 'seller' END;
- INSERT INTO shipments(order_item_id,leg,carrier,tracking_number,shipping_cost,payer,created_by)
- VALUES(i.order_item_id,p_leg,p_carrier,p_tracking,p_cost,who,p_actor) RETURNING shipment_id INTO v_ship;
- UPDATE order_items SET fulfillment_status=next_state WHERE order_item_id=i.order_item_id;
- INSERT INTO activity_logs(event_source,shipment_id,status,actor_id) VALUES('shipment',v_ship,'in_transit',p_actor);
- IF p_leg='hub_to_seller' THEN INSERT INTO seller_charges(seller_id,shipment_id,amount,recorded_by) VALUES(i.seller_id,v_ship,p_cost,p_actor); END IF;
- PERFORM log_order(p_order,next_state,p_actor,p_carrier||' / '||p_tracking);
- RETURN v_ship;
-END; $$;
-CREATE FUNCTION receive_at_hub(p_qc BIGINT,p_order BIGINT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE i order_items; v_ship BIGINT;
-BEGIN
- PERFORM require_role(p_qc,'qc');
- SELECT * INTO i FROM order_items WHERE order_id=p_order FOR UPDATE;
- IF NOT FOUND OR i.fulfillment_status<>'inbound' THEN RAISE EXCEPTION 'Item is not inbound'; END IF;
- UPDATE shipments SET status='delivered',delivered_at=now() WHERE order_item_id=i.order_item_id AND leg='seller_to_hub' RETURNING shipment_id INTO v_ship;
- UPDATE order_items SET fulfillment_status='awaiting_qc' WHERE order_item_id=i.order_item_id;
- INSERT INTO activity_logs(event_source,shipment_id,status,actor_id,location) VALUES('shipment',v_ship,'delivered',p_qc,'QC hub');
- PERFORM log_order(p_order,'awaiting_qc',p_qc);
-END; $$;
-
-CREATE FUNCTION record_qc(p_qc BIGINT,p_order BIGINT,p_result TEXT,p_score INTEGER,p_notes TEXT,p_evidence TEXT[]) RETURNS BIGINT
-LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE i order_items; o orders; paid payments; v_qc BIGINT; ref TEXT; next_state TEXT;
-BEGIN
- PERFORM require_role(p_qc,'qc');
- SELECT * INTO o FROM orders WHERE order_id=p_order FOR UPDATE;
- SELECT * INTO i FROM order_items WHERE order_id=p_order FOR UPDATE;
- IF NOT FOUND OR i.fulfillment_status<>'awaiting_qc' THEN RAISE EXCEPTION 'Item is not awaiting QC'; END IF;
- IF coalesce(array_length(p_evidence,1),0)=0 THEN RAISE EXCEPTION 'QC evidence required'; END IF;
- INSERT INTO qc_inspections(order_item_id,inspector_id,result,seller_score,notes)
- VALUES(i.order_item_id,p_qc,p_result,p_score,p_notes) RETURNING inspection_id INTO v_qc;
- FOREACH ref IN ARRAY p_evidence LOOP
-  IF ref IS NULL OR length(trim(ref))=0 THEN RAISE EXCEPTION 'Empty evidence reference'; END IF;
-  INSERT INTO assets(inspection_id,file_reference) VALUES(v_qc,ref);
- END LOOP;
- next_state:=CASE WHEN p_result='pass' THEN 'ready_to_ship' ELSE 'qc_failed' END;
- UPDATE order_items SET fulfillment_status=next_state WHERE order_item_id=i.order_item_id;
- IF p_result='fail' THEN
-  UPDATE orders SET status='cancelled' WHERE order_id=p_order;
-  SELECT * INTO paid FROM payments WHERE order_id=p_order AND status='captured';
-  IF NOT FOUND THEN RAISE EXCEPTION 'Captured payment missing'; END IF;
-  INSERT INTO refunds(order_id,payment_id,amount,reason) VALUES(p_order,paid.payment_id,paid.amount,'QC failed: full buyer payment including initial shipping');
- END IF;
- PERFORM log_order(p_order,next_state,p_qc,p_notes);
- INSERT INTO notifications(user_id,order_id,type,message) VALUES
- (i.seller_id,p_order,'qc_result','QC result: '||p_result),(o.buyer_id,p_order,'qc_result','QC result: '||p_result);
- RETURN v_qc;
-END; $$;
-
-CREATE FUNCTION confirm_receipt(p_buyer BIGINT,p_order BIGINT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE o orders; i order_items; v_ship BIGINT;
-BEGIN
- PERFORM require_role(p_buyer,'buyer');
- SELECT * INTO o FROM orders WHERE order_id=p_order AND buyer_id=p_buyer FOR UPDATE;
- IF NOT FOUND OR o.status<>'processing' THEN RAISE EXCEPTION 'Own processing order required'; END IF;
- SELECT * INTO i FROM order_items WHERE order_id=p_order FOR UPDATE;
- IF i.fulfillment_status<>'outbound' THEN RAISE EXCEPTION 'Item is not shipped to buyer'; END IF;
- UPDATE shipments SET status='delivered',delivered_at=now() WHERE order_item_id=i.order_item_id AND leg='hub_to_buyer' RETURNING shipment_id INTO v_ship;
- UPDATE order_items SET fulfillment_status='completed' WHERE order_id=p_order;
- UPDATE orders SET status='completed',completed_at=now() WHERE order_id=p_order;
- INSERT INTO activity_logs(event_source,shipment_id,status,actor_id) VALUES('shipment',v_ship,'delivered',p_buyer);
- PERFORM log_order(p_order,'completed',p_buyer,'Buyer confirmed receipt and item check.');
-END; $$;
-CREATE FUNCTION confirm_seller_return(p_qc BIGINT,p_order BIGINT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE i order_items; v_ship BIGINT;
-BEGIN
- PERFORM require_role(p_qc,'qc');
- SELECT * INTO i FROM order_items WHERE order_id=p_order FOR UPDATE;
- IF NOT FOUND OR i.fulfillment_status<>'return_in_transit' THEN RAISE EXCEPTION 'Return is not in transit'; END IF;
- UPDATE shipments SET status='delivered',delivered_at=now() WHERE order_item_id=i.order_item_id AND leg='hub_to_seller' RETURNING shipment_id INTO v_ship;
- UPDATE order_items SET fulfillment_status='returned' WHERE order_id=p_order;
- INSERT INTO activity_logs(event_source,shipment_id,status,actor_id) VALUES('shipment',v_ship,'delivered',p_qc);
- PERFORM log_order(p_order,'returned',p_qc);
-END; $$;
-
-CREATE FUNCTION approve_refund(p_admin BIGINT,p_refund BIGINT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE r refunds; paid payments;
-BEGIN
- PERFORM require_role(p_admin,'admin');
- SELECT * INTO r FROM refunds WHERE refund_id=p_refund FOR UPDATE;
- IF NOT FOUND OR r.status<>'requested' THEN RAISE EXCEPTION 'Requested refund required'; END IF;
- SELECT * INTO paid FROM payments WHERE payment_id=r.payment_id;
- IF paid.status<>'captured' OR r.amount<>paid.amount OR r.order_id<>paid.order_id THEN RAISE EXCEPTION 'Full original payment must be refunded'; END IF;
- UPDATE refunds SET status='approved',approved_by=p_admin,approved_at=now() WHERE refund_id=p_refund;
- PERFORM log_action(p_admin,'refund_approved','refund',p_refund);
-END; $$;
-CREATE FUNCTION record_refund_paid(p_admin BIGINT,p_refund BIGINT,p_reference TEXT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE r refunds;
-BEGIN
- PERFORM require_role(p_admin,'admin');
- SELECT * INTO r FROM refunds WHERE refund_id=p_refund FOR UPDATE;
- IF NOT FOUND OR r.status<>'approved' THEN RAISE EXCEPTION 'Approved refund required'; END IF;
- IF length(trim(p_reference))=0 THEN RAISE EXCEPTION 'Transfer reference required'; END IF;
- UPDATE refunds SET status='paid',paid_by=p_admin,paid_at=now(),transfer_reference=p_reference WHERE refund_id=p_refund;
- PERFORM log_action(p_admin,'refund_payment_recorded','refund',p_refund);
-END; $$;
-
-CREATE FUNCTION create_payout(p_admin BIGINT,p_seller BIGINT,p_bank BIGINT) RETURNS BIGINT LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE b seller_bank_accounts; v_payout BIGINT; v_total NUMERIC; ids BIGINT[];
-BEGIN
- PERFORM require_role(p_admin,'admin');
- -- Serialize settlement batches for the same seller.
- PERFORM 1 FROM users WHERE user_id=p_seller AND seller_status IS NOT NULL FOR UPDATE;
- SELECT * INTO b FROM seller_bank_accounts WHERE bank_account_id=p_bank AND seller_id=p_seller AND is_verified AND NOT archived;
- IF NOT FOUND THEN RAISE EXCEPTION 'Verified bank account owned by seller required'; END IF;
- SELECT array_agg(i.order_item_id),sum(i.unit_price) INTO ids,v_total FROM order_items i JOIN orders o USING(order_id)
- WHERE i.seller_id=p_seller AND o.status='completed' AND i.fulfillment_status='completed'
- AND EXISTS(SELECT 1 FROM payments p WHERE p.order_id=o.order_id AND p.status='captured')
- AND NOT EXISTS(SELECT 1 FROM refunds r WHERE r.order_id=o.order_id)
- AND NOT EXISTS(SELECT 1 FROM payout_items pi WHERE pi.order_item_id=i.order_item_id);
- IF ids IS NULL THEN RAISE EXCEPTION 'No completed unpaid sales eligible for payout'; END IF;
- INSERT INTO payouts(seller_id,bank_account_id,bank_name_snapshot,account_holder_snapshot,account_number_snapshot,amount,created_by)
- VALUES(p_seller,p_bank,b.bank_name,b.account_holder,b.account_number,v_total,p_admin) RETURNING payout_id INTO v_payout;
- INSERT INTO payout_items SELECT v_payout,i.order_item_id,i.unit_price FROM order_items i WHERE i.order_item_id=ANY(ids);
- PERFORM log_action(p_admin,'payout_created','payout',v_payout);
- RETURN v_payout;
-END; $$;
-CREATE FUNCTION approve_payout(p_admin BIGINT,p_payout BIGINT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE n INTEGER;
-BEGIN
- PERFORM require_role(p_admin,'admin');
- PERFORM 1 FROM payouts WHERE payout_id=p_payout FOR UPDATE;
- IF NOT EXISTS(SELECT 1 FROM payouts WHERE payout_id=p_payout AND status='pending') THEN RAISE EXCEPTION 'Pending payout required'; END IF;
- IF EXISTS(SELECT 1 FROM payout_items pi JOIN order_items i USING(order_item_id) JOIN orders o USING(order_id)
- WHERE pi.payout_id=p_payout AND (o.status<>'completed' OR EXISTS(SELECT 1 FROM refunds r WHERE r.order_id=o.order_id))) THEN RAISE EXCEPTION 'Payout contains ineligible sale'; END IF;
- IF (SELECT amount FROM payouts WHERE payout_id=p_payout)<>(SELECT sum(amount) FROM payout_items WHERE payout_id=p_payout) THEN RAISE EXCEPTION 'Payout total mismatch'; END IF;
- UPDATE payouts SET status='approved',approved_by=p_admin,approved_at=now() WHERE payout_id=p_payout;
- PERFORM log_action(p_admin,'payout_approved','payout',p_payout);
-END; $$;
-CREATE FUNCTION record_payout_paid(p_admin BIGINT,p_payout BIGINT,p_reference TEXT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-BEGIN
- PERFORM require_role(p_admin,'admin');
- PERFORM 1 FROM payouts WHERE payout_id=p_payout AND status='approved' FOR UPDATE;
- IF NOT FOUND THEN RAISE EXCEPTION 'Approved payout required'; END IF;
- IF length(trim(p_reference))=0 THEN RAISE EXCEPTION 'Transfer reference required'; END IF;
- UPDATE payouts SET status='paid',paid_by=p_admin,paid_at=now(),transfer_reference=p_reference WHERE payout_id=p_payout;
- PERFORM log_action(p_admin,'seller_payment_recorded','payout',p_payout);
-END; $$;
-
 -- Functions check business roles using p_actor. Backend must get actor from a
 -- trusted authenticated session. These parameters are NOT database login auth.
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA owl FROM PUBLIC;
@@ -838,23 +534,6 @@ BEGIN
 END; $$;
 CREATE TRIGGER item_snapshot BEFORE UPDATE ON order_items FOR EACH ROW EXECUTE FUNCTION protect_item_snapshot();
 
-CREATE FUNCTION check_refund_record() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE p payments;
-BEGIN
- SELECT * INTO p FROM payments WHERE payment_id=NEW.payment_id;
- IF p.status<>'captured' OR p.order_id<>NEW.order_id OR p.amount<>NEW.amount THEN RAISE EXCEPTION 'Refund must equal the full original captured payment'; END IF;
- IF NOT EXISTS(SELECT 1 FROM orders WHERE order_id=NEW.order_id AND status='cancelled') THEN RAISE EXCEPTION 'Refund requires a cancelled order'; END IF;
- IF TG_OP='UPDATE' THEN
-  IF ROW(NEW.order_id,NEW.payment_id,NEW.amount,NEW.reason) IS DISTINCT FROM ROW(OLD.order_id,OLD.payment_id,OLD.amount,OLD.reason)
-  THEN RAISE EXCEPTION 'Refund financial details cannot change'; END IF;
-  IF OLD.status='paid' OR (OLD.status='approved' AND NEW.status<>'paid') OR (OLD.status='requested' AND NEW.status<>'approved')
-  THEN RAISE EXCEPTION 'Invalid refund transition'; END IF;
- END IF;
- IF NEW.approved_by IS NOT NULL THEN PERFORM require_role(NEW.approved_by,'admin'); END IF;
- IF NEW.paid_by IS NOT NULL THEN PERFORM require_role(NEW.paid_by,'admin'); END IF;
- RETURN NEW;
-END; $$;
-CREATE TRIGGER refund_guard BEFORE INSERT OR UPDATE ON refunds FOR EACH ROW EXECUTE FUNCTION check_refund_record();
 CREATE FUNCTION check_payout_record() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  PERFORM require_role(NEW.created_by,'admin');
@@ -872,20 +551,9 @@ BEGIN
  RETURN NEW;
 END; $$;
 CREATE TRIGGER payout_guard BEFORE INSERT OR UPDATE ON payouts FOR EACH ROW EXECUTE FUNCTION check_payout_record();
-CREATE FUNCTION check_payout_item() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE i order_items; p payouts;
-BEGIN
- SELECT * INTO i FROM order_items WHERE order_item_id=NEW.order_item_id;
- SELECT * INTO p FROM payouts WHERE payout_id=NEW.payout_id;
- IF i.seller_id<>p.seller_id OR i.unit_price<>NEW.amount OR i.fulfillment_status<>'completed'
- OR NOT EXISTS(SELECT 1 FROM orders WHERE order_id=i.order_id AND status='completed')
- OR EXISTS(SELECT 1 FROM refunds WHERE order_id=i.order_id)
- OR NOT EXISTS(SELECT 1 FROM payments WHERE order_id=i.order_id AND status='captured')
- THEN RAISE EXCEPTION 'Only completed, paid, non-refunded sales for this seller can be settled'; END IF;
- RETURN NEW;
-END; $$;
-CREATE TRIGGER payout_item_guard BEFORE INSERT ON payout_items FOR EACH ROW EXECUTE FUNCTION check_payout_item();
-CREATE TRIGGER immutable_payout_items BEFORE UPDATE OR DELETE ON payout_items FOR EACH ROW EXECUTE FUNCTION immutable_record();
+
+
+
 
 CREATE FUNCTION check_qc_actor() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
@@ -903,17 +571,6 @@ END; $$;
 CREATE CONSTRAINT TRIGGER final_qc_evidence AFTER INSERT ON qc_inspections DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION qc_needs_evidence();
 
-CREATE FUNCTION payment_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-BEGIN
- IF TG_OP='UPDATE' AND OLD.status='captured' THEN RAISE EXCEPTION 'Captured payment is immutable'; END IF;
- IF NEW.status='captured' THEN
-  PERFORM require_role(NEW.verified_by,'admin');
-  IF NOT EXISTS(SELECT 1 FROM orders WHERE order_id=NEW.order_id AND total=NEW.amount AND status='awaiting_payment')
-  THEN RAISE EXCEPTION 'Captured payment must match the awaiting-payment order total'; END IF;
- END IF;
- RETURN NEW;
-END; $$;
-CREATE TRIGGER captured_payment_guard BEFORE INSERT OR UPDATE ON payments FOR EACH ROW EXECUTE FUNCTION payment_guard();
 CREATE FUNCTION payout_item_snapshot_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE f seller_offers; o orders;
 BEGIN
@@ -925,8 +582,7 @@ BEGIN
  RETURN NEW;
 END; $$;
 CREATE TRIGGER item_source_guard BEFORE INSERT ON order_items FOR EACH ROW EXECUTE FUNCTION payout_item_snapshot_guard();
-CREATE FUNCTION admin_review_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-BEGIN PERFORM require_role(NEW.admin_id,'admin'); RETURN NEW; END; $$;
+
 CREATE FUNCTION catalog_owner_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN PERFORM require_role(NEW.created_by,'admin'); RETURN NEW; END; $$;
 CREATE TRIGGER catalog_actor_guard BEFORE INSERT ON products FOR EACH ROW EXECUTE FUNCTION catalog_owner_guard();
@@ -939,74 +595,6 @@ BEGIN
  RETURN NEW;
 END; $$;
 CREATE TRIGGER queue_entry_guard BEFORE INSERT OR UPDATE ON queue_entries FOR EACH ROW EXECUTE FUNCTION check_queue_entry();
-
-CREATE FUNCTION set_cart_item(p_buyer BIGINT,p_variant BIGINT,p_condition TEXT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-BEGIN
- PERFORM require_role(p_buyer,'buyer');
- INSERT INTO carts(user_id,variant_id,condition,added_at) VALUES(p_buyer,p_variant,p_condition,now())
- ON CONFLICT(user_id) DO UPDATE SET variant_id=excluded.variant_id,condition=excluded.condition,added_at=now();
-END; $$;
-CREATE FUNCTION verify_seller(p_admin BIGINT,p_verification BIGINT,p_approve BOOLEAN,p_note TEXT) RETURNS VOID
-LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-BEGIN
- PERFORM require_role(p_admin,'admin');
- PERFORM 1 FROM seller_verifications WHERE verification_id=p_verification AND status='pending' FOR UPDATE;
- IF NOT FOUND THEN RAISE EXCEPTION 'Pending verification required'; END IF;
- UPDATE seller_verifications SET status=CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,
- reviewer_id=p_admin,review_note=p_note,reviewed_at=now() WHERE verification_id=p_verification;
- PERFORM log_action(p_admin,'seller_verification_reviewed','seller_verification',p_verification);
-END; $$;
-
-CREATE FUNCTION request_cancellation(p_buyer BIGINT,p_order BIGINT,p_reason TEXT) RETURNS BIGINT
-LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE v_id BIGINT;
-BEGIN
- PERFORM require_role(p_buyer,'buyer');
- IF NOT EXISTS(SELECT 1 FROM orders o JOIN order_items i USING(order_id) WHERE o.order_id=p_order AND o.buyer_id=p_buyer
- AND i.fulfillment_status IN ('awaiting_payment','awaiting_seller_shipment'))
- THEN RAISE EXCEPTION 'Cancellation request allowed only before seller handover in this prototype'; END IF;
- INSERT INTO cancellation_requests(order_id,buyer_id,reason) VALUES(p_order,p_buyer,p_reason) RETURNING request_id INTO v_id;
- RETURN v_id;
-END; $$;
-CREATE FUNCTION review_cancellation(p_admin BIGINT,p_request BIGINT,p_approve BOOLEAN) RETURNS VOID
-LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE r cancellation_requests; o orders; i order_items; f seller_offers; g BIGINT; paid payments;
-BEGIN
- PERFORM require_role(p_admin,'admin');
- SELECT * INTO r FROM cancellation_requests WHERE request_id=p_request;
- IF NOT FOUND THEN RAISE EXCEPTION 'Request not found'; END IF;
- SELECT * INTO i FROM order_items WHERE order_id=r.order_id;
- g:=ensure_group(i.variant_id,i.condition_snapshot);
- SELECT * INTO r FROM cancellation_requests WHERE request_id=p_request FOR UPDATE;
- SELECT * INTO o FROM orders WHERE order_id=r.order_id FOR UPDATE;
- SELECT * INTO i FROM order_items WHERE order_id=r.order_id FOR UPDATE;
- IF r.status<>'pending' THEN RAISE EXCEPTION 'Request already reviewed'; END IF;
- IF p_approve AND i.fulfillment_status NOT IN ('awaiting_payment','awaiting_seller_shipment') THEN RAISE EXCEPTION 'Seller already handed over item'; END IF;
- UPDATE cancellation_requests SET status=CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,reviewed_by=p_admin,reviewed_at=now() WHERE request_id=p_request;
- IF NOT p_approve THEN RETURN; END IF;
- SELECT * INTO paid FROM payments WHERE order_id=r.order_id AND status='captured';
- IF FOUND THEN
-  UPDATE seller_offers SET available_quantity=available_quantity+1 WHERE offer_id=i.offer_id RETURNING * INTO f;
-  IF f.status='approved' THEN
-   IF NOT EXISTS(SELECT 1 FROM queue_entries WHERE offer_id=f.offer_id) THEN PERFORM queue_add(g,f.offer_id,'restored'); END IF;
-   PERFORM advance_queue(g);
-  END IF;
- END IF;
- UPDATE orders SET status='cancelled' WHERE order_id=o.order_id;
- UPDATE order_items SET fulfillment_status='cancelled' WHERE order_id=o.order_id;
- IF paid.payment_id IS NOT NULL THEN
-  INSERT INTO refunds(order_id,payment_id,amount,reason) VALUES(o.order_id,paid.payment_id,paid.amount,'Admin-approved cancellation before seller handover');
- END IF;
- PERFORM log_order(o.order_id,'cancelled',p_admin,'Stock restored only if payment had reserved one unit.');
-END; $$;
-CREATE FUNCTION record_return_shipping_paid(p_admin BIGINT,p_charge BIGINT,p_reference TEXT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-BEGIN
- PERFORM require_role(p_admin,'admin');
- IF length(trim(p_reference))=0 THEN RAISE EXCEPTION 'Reference required'; END IF;
- UPDATE seller_charges SET status='paid',paid_at=now(),payment_reference=p_reference WHERE charge_id=p_charge AND status='unpaid';
- IF NOT FOUND THEN RAISE EXCEPTION 'Unpaid seller charge required'; END IF;
- PERFORM log_action(p_admin,'return_shipping_paid','seller_charge',p_charge);
-END; $$;
 
 -- Public product view intentionally omits seller identity and bank data.
 -- Refresh queue timers using refresh_all_queues() in the server's scheduler.
@@ -1025,30 +613,13 @@ SELECT s.user_id AS seller_id,count(q.inspection_id)::INTEGER AS inspections,
  round(avg(q.seller_score),2) AS average_score,qc_skip_count(s.user_id) AS skipped_opportunities
 FROM users s LEFT JOIN order_items i ON i.seller_id=s.user_id LEFT JOIN qc_inspections q USING(order_item_id)
 WHERE s.seller_status IS NOT NULL GROUP BY s.user_id;
+-- [อ่านยอดขาย] server.js อ่าน View นี้เพื่อส่งสถานะขายและ QC กลับ UI
 CREATE VIEW seller_sales AS
 SELECT i.seller_id,o.order_id,o.status AS order_status,i.fulfillment_status,i.product_name_snapshot,
  i.size_snapshot,i.color_snapshot,i.condition_snapshot,i.unit_price,q.result AS qc_result,q.seller_score,
  CASE WHEN q.inspection_id IS NULL THEN 'No QC result yet' ELSE q.result END AS qc_display,
  o.created_at,o.completed_at
 FROM order_items i JOIN orders o USING(order_id) LEFT JOIN qc_inspections q USING(order_item_id);
-CREATE VIEW buyer_orders AS
-SELECT o.buyer_id,o.order_id,o.status,i.fulfillment_status,i.product_name_snapshot,i.size_snapshot,
- i.color_snapshot,i.condition_snapshot,'Owl Pai Lei'::TEXT AS sold_by,o.item_subtotal,o.platform_fee,
- o.discount,o.shipping_fee,o.total,o.created_at,o.completed_at
-FROM orders o JOIN order_items i USING(order_id);
-CREATE VIEW eligible_payouts AS
-SELECT i.seller_id,i.order_item_id,i.order_id,i.unit_price AS seller_amount
-FROM order_items i JOIN orders o USING(order_id)
-WHERE o.status='completed' AND i.fulfillment_status='completed'
-AND EXISTS(SELECT 1 FROM payments p WHERE p.order_id=o.order_id AND p.status='captured')
-AND NOT EXISTS(SELECT 1 FROM refunds r WHERE r.order_id=o.order_id)
-AND NOT EXISTS(SELECT 1 FROM payout_items pi WHERE pi.order_item_id=i.order_item_id);
-CREATE VIEW admin_finance_summary AS
-SELECT (SELECT coalesce(sum(amount),0) FROM payments WHERE status='captured') AS captured_payments,
- (SELECT coalesce(sum(amount),0) FROM refunds WHERE status='paid') AS recorded_buyer_refunds,
- (SELECT coalesce(sum(amount),0) FROM payouts WHERE status='paid') AS recorded_seller_payouts,
- (SELECT coalesce(sum(amount),0) FROM seller_charges WHERE status='unpaid') AS return_shipping_due;
-
 
 CREATE TRIGGER immutable_activity BEFORE UPDATE OR DELETE ON activity_logs FOR EACH ROW EXECUTE FUNCTION immutable_record();
 CREATE FUNCTION compact_asset_guard() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -1091,9 +662,7 @@ UPDATE users SET seller_display_name=full_name,seller_status='active',seller_sin
 INSERT INTO seller_bank_accounts(seller_id,bank_name,account_holder,account_number,is_verified) VALUES
  (1,'Fictional Demo Bank','Demo Seller One','DEMO-ACCOUNT-001',true),
  (2,'Fictional Demo Bank','Demo Seller Two','DEMO-ACCOUNT-002',true);
-INSERT INTO seller_verifications(seller_id,id_document_reference,bank_document_reference,status,reviewer_id,review_note,reviewed_at) VALUES
- (1,'demo://seller1-id','demo://seller1-bank','approved',4,'Fictional demo documents only',now()),
- (2,'demo://seller2-id','demo://seller2-bank','approved',4,'Fictional demo documents only',now());
+
 INSERT INTO addresses(user_id,recipient_name,phone,address_line,district,province,postal_code,is_default) VALUES
  (3,'Demo Buyer','DEMO-PHONE-3','Sample address for classroom use','Demo District','Bangkok','10000',true),
  (1,'Demo Seller One','DEMO-PHONE-1','Fictional seller address 1','Demo District','Bangkok','10000',true),
@@ -1119,9 +688,6 @@ BEGIN
   END LOOP;
  END LOOP;
 END; $$;
-INSERT INTO carts(user_id) VALUES(1),(2),(3);
-SELECT set_cart_item(3,3,'new');
-INSERT INTO wishlist_items(user_id,product_id) VALUES(3,1),(3,2);
 INSERT INTO coupons(code,discount_type,value,min_spend,starts_at,expires_at,usage_limit,created_by) VALUES
  ('OWL50','fixed',50,100,now()-interval '1 day',now()+interval '365 days',20,4),
  ('OWL10','percent',10,100,now()-interval '1 day',now()+interval '365 days',20,4);

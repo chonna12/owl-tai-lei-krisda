@@ -5,6 +5,7 @@ const $ = id => document.getElementById(id);
 const ICONS = { Shoes: 'icon-shoe', Clothing: 'icon-tee', Accessories: 'icon-bag' };
 let demoSession = null;
 
+// [UI → API] fetch ส่ง JSON ไป backend/src/server.js และรับคำตอบกลับ
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
     ...options,
@@ -23,6 +24,7 @@ async function requestJson(url, options = {}) {
 const getJson = url => requestJson(url);
 
 // Public fictional seed credentials only. The Backend still validates the password, session and Seller role.
+// [Demo] เข้าบัญชีตัวอย่างผ่าน /api/login; Backend ยังตรวจสิทธิ์จริง
 async function ensureDemoSession() {
   if (!demoSession) {
     demoSession = (async () => {
@@ -74,6 +76,7 @@ async function readItemPhoto(file) {
   if (!file.size || file.size > 2 * 1024 * 1024)
     throw new Error('Each photo must be no larger than 2 MB.');
   const data = await new Promise((resolve, reject) => {
+    // [รูป] อ่านไฟล์เป็น Data URL เพื่อส่งไป backend/src/photos.js
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(new Error('Could not read this photo.'));
@@ -298,11 +301,13 @@ async function showSellForm(product) {
   });
 
   // UI -> POST API -> create_offer/savePhotos -> PostgreSQL. Show success only after HTTP 201.
+  // [เริ่มลงขาย] กด Submit → รวมข้อมูลฟอร์ม → ส่งเข้า API
   page.querySelector('#offer-form').addEventListener('submit', async e => {
     e.preventDefault();
     if (readingPhotos) return;
     btn.disabled = true; btn.textContent = 'Submitting…'; message.textContent = '';
     try {
+      // [ส่งออก] JSON นี้เข้าจุด app.post ใน backend/src/server.js
       const result = await sellerRequest('/api/seller/offers', {
         method: 'POST',
         body: JSON.stringify({
@@ -315,6 +320,7 @@ async function showSellForm(product) {
           photos
         })
       });
+      // [รับกลับ] DB บันทึกแล้ว → ได้ offer_id → แสดง Pending
       showPendingResult(result.offer_id);
     } catch (error) { message.textContent = error.message; }
     finally { btn.disabled = false; btn.textContent = 'Confirm listing →'; }
@@ -341,6 +347,7 @@ async function showMyOrders() {
   // Read only this authenticated Seller's records from PostgreSQL, never from localStorage.
   let offers;
   try {
+    // [อ่านกลับ] GET → Backend อ่าน DB → ส่งรายการของ Seller คนนี้
     const data = await sellerRequest('/api/seller/offers');
     offers = data.offers.map(offer => ({
       ...offer,
