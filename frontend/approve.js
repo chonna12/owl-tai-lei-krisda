@@ -1,28 +1,12 @@
-// approve.js — Pure JS logic. HTML lives in index.html, styles in styles.css.
+// approve.js — Sell-flow screens: Action Modal, Sell Form, Pending Result, My Orders.
+// Depends on: app.js (shared utils), photo.js (photo helpers)
 
-// Demo mode uses the existing authenticated API. There is no Login screen in this classroom build.
-const $ = id => document.getElementById(id);
-const ICONS = { Shoes: 'icon-shoe', Clothing: 'icon-tee', Accessories: 'icon-bag' };
+// ─── Demo session ─────────────────────────────────────────────────────────────
+// Public fictional seed credentials only. The backend still validates the
+// password, session, and Seller role.
+
 let demoSession = null;
 
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...options.headers }
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    const error = new Error(data.error || 'Request failed. Please try again.');
-    error.status = response.status;
-    throw error;
-  }
-  return data;
-}
-
-const getJson = url => requestJson(url);
-
-// Public fictional seed credentials only. The Backend still validates the password, session and Seller role.
 async function ensureDemoSession() {
   if (!demoSession) {
     demoSession = (async () => {
@@ -53,78 +37,7 @@ async function sellerRequest(url, options = {}) {
   }
 }
 
-function renderPhotoPreviews(container, photos, onRemove) {
-  container.replaceChildren();
-  photos.forEach((src, index) => {
-    const box = document.createElement('div');
-    box.className = 'sf-photo-preview';
-    const img = document.createElement('img');
-    img.src = src; img.alt = `Item photo ${index + 1}`;
-    const remove = document.createElement('button');
-    remove.type = 'button'; remove.textContent = '×';
-    remove.setAttribute('aria-label', `Remove photo ${index + 1}`);
-    remove.addEventListener('click', () => onRemove(index));
-    box.append(img, remove); container.append(box);
-  });
-}
-
-async function readItemPhoto(file) {
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type))
-    throw new Error('Choose JPG, PNG or WebP images.');
-  if (!file.size || file.size > 2 * 1024 * 1024)
-    throw new Error('Each photo must be no larger than 2 MB.');
-  const data = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Could not read this photo.'));
-    reader.readAsDataURL(file);
-  });
-  await new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = resolve;
-    image.onerror = () => reject(new Error('This file could not be opened as an image.'));
-    image.src = data;
-  });
-  return data;
-}
-
-/** Clone a <template> into .page and return the page element for querying. */
-function renderTemplate(templateId) {
-  const page = document.querySelector('.page') || document.body;
-  const tpl  = document.getElementById(templateId);
-  page.innerHTML = '';
-  page.appendChild(tpl.content.cloneNode(true));
-  const notice = document.createElement('p');
-  notice.className = 'demo-mode';
-  notice.textContent = 'Demo mode · Seller One · Offers are saved to PostgreSQL';
-  page.prepend(notice);
-  return page;
-}
-
-function svgIcon(id) {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('class', 'card-icon');
-  svg.setAttribute('viewBox', id === 'icon-shoe' ? '0 0 120 70' : '0 0 100 90');
-  svg.setAttribute('aria-hidden', 'true');
-  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-  use.setAttribute('href', '#' + id);
-  svg.append(use);
-  return svg;
-}
-
-function fillMedia(media, product) {
-  if (typeof product.image === 'string' && /^(data:image\/|https?:\/\/|\/)/.test(product.image)) {
-    const img = document.createElement('img');
-    img.className = 'card-photo';
-    img.src = product.image;
-    img.alt = product.name;
-    media.append(img);
-  } else {
-    media.append(svgIcon(ICONS[product.category] || 'icon-bag'));
-  }
-}
-
-// ─── 1. ACTION MODAL ──────────────────────────────────────────────────────────
+// ─── 1. ACTION MODAL ─────────────────────────────────────────────────────────
 // The modal markup is already in index.html — JS just populates & shows it.
 
 async function showActionModal(product) {
@@ -197,9 +110,8 @@ async function showActionModal(product) {
     marketBox.innerHTML = '<p class="apm-error">Could not load market details.</p>';
   }
 
-  // Button handlers (re-assign each call so product is current)
-  const sellBtn = $('modal-btn-sell');
-  sellBtn.onclick = () => {
+  // Button handlers (re-assigned each call so `product` is current)
+  $('modal-btn-sell').onclick = () => {
     overlay.classList.remove('is-open');
     showSellForm(product);
   };
@@ -268,6 +180,7 @@ async function showSellForm(product) {
     page.querySelector('#form-quantity').readOnly = true;
   });
 
+  // Photo upload (uses photo.js helpers)
   const photos = [];
   const photoInput = page.querySelector('#form-photos');
   const previews = page.querySelector('#photo-previews');
@@ -297,7 +210,8 @@ async function showSellForm(product) {
     finally { readingPhotos = false; btn.disabled = false; photoInput.value = ''; }
   });
 
-  // UI -> POST API -> create_offer/savePhotos -> PostgreSQL. Show success only after HTTP 201.
+  // Form submit → POST to API → create_offer/savePhotos → PostgreSQL
+  // Shows success only after HTTP 201.
   page.querySelector('#offer-form').addEventListener('submit', async e => {
     e.preventDefault();
     if (readingPhotos) return;
@@ -338,7 +252,8 @@ async function showMyOrders() {
 
   const list = page.querySelector('#mo-list');
 
-  // Read only this authenticated Seller's records from PostgreSQL, never from localStorage.
+  // Read only this authenticated seller's records from PostgreSQL,
+  // never from localStorage.
   let offers;
   try {
     const data = await sellerRequest('/api/seller/offers');
@@ -408,78 +323,9 @@ async function showMyOrders() {
 
 function statusLabel(status) {
   switch (status) {
-    case 'approved': return '✅ Approved';
-    case 'rejected': return '❌ Rejected';
+    case 'approved':  return '✅ Approved';
+    case 'rejected':  return '❌ Rejected';
     case 'withdrawn': return 'Withdrawn';
-    default:         return 'Pending approval';
+    default:          return 'Pending approval';
   }
 }
-
-// ─── Product cards (home grid) ────────────────────────────────────────────────
-function makeCard(product) {
-  const li   = document.createElement('li');
-  const card = document.createElement('button');
-  card.type      = 'button';
-  card.className = 'card';
-  card.addEventListener('click', () => showActionModal(product));
-
-  const media = document.createElement('div');
-  media.className = 'card-media tint-' + (product.product_id % 5);
-  const label = document.createElement('span');
-  label.className   = 'card-label';
-  label.textContent = `${product.category} / ${String(product.product_id).padStart(3, '0')}`;
-  media.append(label);
-  fillMedia(media, product);
-
-  const body  = document.createElement('div');
-  body.className = 'card-body';
-  const brand = document.createElement('span');
-  brand.className   = 'card-brand';
-  brand.textContent = product.brand_name;
-  const name  = document.createElement('span');
-  name.className   = 'card-name';
-  name.textContent = product.name;
-  body.append(brand, name);
-
-  card.append(media, body);
-  li.append(card);
-  return li;
-}
-
-// ─── Home loader ──────────────────────────────────────────────────────────────
-async function loadHome() {
-  const status = $('home-status');
-  if (!status) return;
-  status.textContent = 'Loading products…';
-  try {
-    const { products } = await getJson('/api/products');
-    $('product-grid').replaceChildren(...products.map(makeCard));
-    $('count').textContent = `${products.length} curated items`;
-    status.textContent = products.length ? '' : 'No products yet.';
-  } catch {
-    status.textContent = 'Could not load products. Check that the backend is running.';
-    status.classList.add('is-error');
-  }
-}
-
-// ─── Bootstrap ────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  // Start the named demo session automatically. Backend role checks remain enabled.
-  ensureDemoSession().catch(error => { const status=$('demo-status'); if(status) status.textContent='Demo sign-in failed: '+error.message; });
-  // Modal close handlers (modal is always in the DOM)
-  const overlay = $('action-modal-overlay');
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay || e.target.id === 'modal-close-btn')
-      overlay.classList.remove('is-open');
-  });
-
-  // Avatar / username → My Orders
-  [document.querySelector('.avatar'), document.querySelector('.user-name')]
-    .forEach(el => {
-      if (!el) return;
-      el.title = 'View my sell orders';
-      el.addEventListener('click', showMyOrders);
-    });
-});
-
-loadHome();
