@@ -538,14 +538,14 @@ BEGIN
  PERFORM require_role(p_admin,'admin');
  SELECT * INTO f FROM seller_offers WHERE offer_id=p_offer;
  IF NOT FOUND THEN RAISE EXCEPTION 'Offer missing'; END IF;
- v_group:=ensure_group(f.variant_id,f.condition);
+ IF f.condition='new' THEN v_group:=ensure_group(f.variant_id,f.condition); END IF;
  SELECT * INTO f FROM seller_offers WHERE offer_id=p_offer FOR UPDATE;
  IF f.status<>'pending' THEN RAISE EXCEPTION 'Offer is no longer pending'; END IF;
  IF p_decision NOT IN ('approve','reject') OR p_decision IS NULL THEN RAISE EXCEPTION 'Decision must be approve or reject'; END IF;
  IF p_decision='reject' AND coalesce(length(trim(p_reason)),0)=0 THEN RAISE EXCEPTION 'Rejection needs a reason'; END IF;
  UPDATE seller_offers SET review_decision=p_decision,reviewed_by=p_admin,review_reason=p_reason,reviewed_at=now() WHERE offer_id=p_offer;
  UPDATE seller_offers SET status=CASE WHEN p_decision='approve' THEN 'approved' ELSE 'rejected' END WHERE offer_id=p_offer;
- IF p_decision='approve' THEN PERFORM queue_add(v_group,p_offer); PERFORM advance_queue(v_group); END IF;
+ IF p_decision='approve' AND f.condition='new' THEN PERFORM queue_add(v_group,p_offer); PERFORM advance_queue(v_group); END IF;
  INSERT INTO notifications(user_id,offer_id,type,message) VALUES(f.seller_id,p_offer,'offer_review','Offer review: '||p_decision||'. '||p_reason);
  PERFORM log_action(p_admin,'offer_'||p_decision,'seller_offer',p_offer);
 END; $$;
@@ -555,13 +555,15 @@ BEGIN
  PERFORM require_role(p_seller,'seller');
  SELECT * INTO f FROM seller_offers WHERE offer_id=p_offer AND seller_id=p_seller;
  IF NOT FOUND THEN RAISE EXCEPTION 'Own offer not found'; END IF;
- v_group:=ensure_group(f.variant_id,f.condition);
+ IF f.condition='new' THEN v_group:=ensure_group(f.variant_id,f.condition); END IF;
  PERFORM 1 FROM seller_offers WHERE offer_id=p_offer FOR UPDATE;
  UPDATE seller_offers SET status='withdrawn' WHERE offer_id=p_offer;
+ IF f.condition='new' THEN
  DELETE FROM queue_entries WHERE offer_id=p_offer;
  UPDATE queue_groups SET active_offer_id=NULL,active_since=NULL WHERE group_id=v_group AND active_offer_id=p_offer;
  INSERT INTO activity_logs(event_source,group_id,offer_id,event_type) VALUES('queue',v_group,p_offer,'withdrawn');
  PERFORM advance_queue(v_group);
+ END IF;
  PERFORM log_action(p_seller,'offer_withdrawn','seller_offer',p_offer);
 END; $$;
 
@@ -578,16 +580,24 @@ BEGIN
  RETURN least(d,p_subtotal);
 END; $$;
 
-CREATE FUNCTION checkout(p_buyer BIGINT,p_variant BIGINT,p_condition TEXT,p_address BIGINT,p_coupon BIGINT DEFAULT NULL) RETURNS BIGINT
+CREATE FUNCTION checkout_selected(p_buyer BIGINT,p_variant BIGINT,p_condition TEXT,p_address BIGINT,p_coupon BIGINT,p_offer BIGINT) RETURNS BIGINT
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE g BIGINT; v_offer BIGINT; f seller_offers; a addresses; cfg platform_settings; v_fee NUMERIC; v_discount NUMERIC; v_order BIGINT; v_product RECORD;
 BEGIN
  PERFORM require_role(p_buyer,'buyer');
  SELECT * INTO a FROM addresses WHERE address_id=p_address AND user_id=p_buyer AND NOT archived;
  IF NOT FOUND THEN RAISE EXCEPTION 'Own active shipping address required'; END IF;
- g:=ensure_group(p_variant,p_condition); v_offer:=advance_queue(g);
- IF v_offer IS NULL THEN RAISE EXCEPTION 'No approved stock available'; END IF;
- SELECT * INTO f FROM seller_offers WHERE offer_id=v_offer;
+ IF p_condition='used' THEN
+  SELECT * INTO f FROM seller_offers
+  WHERE offer_id=p_offer AND variant_id=p_variant AND condition='used'
+    AND status='approved' AND available_quantity>0 FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Selected second-hand item is unavailable'; END IF;
+  v_offer:=f.offer_id;
+ ELSE
+  g:=ensure_group(p_variant,p_condition); v_offer:=advance_queue(g);
+  IF v_offer IS NULL THEN RAISE EXCEPTION 'No approved stock available'; END IF;
+  SELECT * INTO f FROM seller_offers WHERE offer_id=v_offer;
+ END IF;
  IF f.seller_id=p_buyer THEN RAISE EXCEPTION 'Cannot buy own item'; END IF;
  SELECT * INTO cfg FROM platform_settings WHERE settings_id=1;
  v_fee:=round(f.asking_price*cfg.platform_fee_percent/100,2);
@@ -605,6 +615,11 @@ BEGIN
  RETURN v_order;
 END; $$;
 
+CREATE FUNCTION checkout(p_buyer BIGINT,p_variant BIGINT,p_condition TEXT,p_address BIGINT,p_coupon BIGINT DEFAULT NULL) RETURNS BIGINT
+LANGUAGE sql SET search_path=owl,pg_temp AS $$
+ SELECT checkout_selected(p_buyer,p_variant,p_condition,p_address,p_coupon,NULL);
+$$;
+
 CREATE FUNCTION confirm_payment(p_admin BIGINT,p_order BIGINT,p_reference TEXT,p_method TEXT DEFAULT 'demo') RETURNS BIGINT
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 DECLARE o orders; i order_items; f seller_offers; g BIGINT; head BIGINT; paid payments; v_payment BIGINT; d NUMERIC;
@@ -612,15 +627,17 @@ BEGIN
  PERFORM require_role(p_admin,'admin');
  SELECT * INTO i FROM order_items WHERE order_id=p_order;
  IF NOT FOUND THEN RAISE EXCEPTION 'Order item missing'; END IF;
- g:=ensure_group(i.variant_id,i.condition_snapshot);
+ IF i.condition_snapshot='new' THEN g:=ensure_group(i.variant_id,i.condition_snapshot); END IF;
  SELECT * INTO o FROM orders WHERE order_id=p_order FOR UPDATE;
  SELECT * INTO paid FROM payments WHERE order_id=p_order AND status='captured';
  IF FOUND THEN
   IF paid.reference=p_reference THEN RETURN paid.payment_id; ELSE RAISE EXCEPTION 'Order already paid'; END IF;
  END IF;
  IF o.status<>'awaiting_payment' THEN RAISE EXCEPTION 'Order is not awaiting payment'; END IF;
+ IF i.condition_snapshot='new' THEN
  head:=advance_queue(g);
  IF head IS DISTINCT FROM i.offer_id THEN RAISE EXCEPTION 'Queue changed; create a new order before payment'; END IF;
+ END IF;
  SELECT * INTO f FROM seller_offers WHERE offer_id=i.offer_id FOR UPDATE;
  IF f.status<>'approved' OR f.available_quantity<1 OR f.asking_price<>i.unit_price THEN RAISE EXCEPTION 'Offer unavailable or price changed'; END IF;
  d:=discount_for(o.coupon_id,o.buyer_id,o.item_subtotal+o.platform_fee);
@@ -632,11 +649,13 @@ BEGIN
  UPDATE seller_offers SET available_quantity=available_quantity-1 WHERE offer_id=i.offer_id RETURNING * INTO f;
  UPDATE orders SET status='processing' WHERE order_id=p_order;
  UPDATE order_items SET fulfillment_status='awaiting_seller_shipment' WHERE order_id=p_order;
+ IF i.condition_snapshot='new' THEN
  UPDATE queue_groups SET active_offer_id=NULL,active_since=NULL WHERE group_id=g;
  IF f.available_quantity>0 THEN PERFORM queue_add(g,f.offer_id,'sold');
  ELSE DELETE FROM queue_entries WHERE offer_id=f.offer_id; INSERT INTO activity_logs(event_source,group_id,offer_id,event_type) VALUES('queue',g,f.offer_id,'sold'); END IF;
  PERFORM advance_queue(g);
- PERFORM log_order(p_order,'awaiting_seller_shipment',p_admin,'Payment recorded. Stock reserved; queue rotated.');
+ END IF;
+ PERFORM log_order(p_order,'awaiting_seller_shipment',p_admin,'Payment recorded. Stock reserved.');
  INSERT INTO notifications(user_id,order_id,type,message) VALUES(i.seller_id,p_order,'sale_paid','An item sold. Send it to the QC hub.');
  RETURN v_payment;
 END; $$;
@@ -976,7 +995,7 @@ BEGIN
  SELECT * INTO r FROM cancellation_requests WHERE request_id=p_request;
  IF NOT FOUND THEN RAISE EXCEPTION 'Request not found'; END IF;
  SELECT * INTO i FROM order_items WHERE order_id=r.order_id;
- g:=ensure_group(i.variant_id,i.condition_snapshot);
+ IF i.condition_snapshot='new' THEN g:=ensure_group(i.variant_id,i.condition_snapshot); END IF;
  SELECT * INTO r FROM cancellation_requests WHERE request_id=p_request FOR UPDATE;
  SELECT * INTO o FROM orders WHERE order_id=r.order_id FOR UPDATE;
  SELECT * INTO i FROM order_items WHERE order_id=r.order_id FOR UPDATE;
@@ -987,7 +1006,7 @@ BEGIN
  SELECT * INTO paid FROM payments WHERE order_id=r.order_id AND status='captured';
  IF FOUND THEN
   UPDATE seller_offers SET available_quantity=available_quantity+1 WHERE offer_id=i.offer_id RETURNING * INTO f;
-  IF f.status='approved' THEN
+  IF f.status='approved' AND i.condition_snapshot='new' THEN
    IF NOT EXISTS(SELECT 1 FROM queue_entries WHERE offer_id=f.offer_id) THEN PERFORM queue_add(g,f.offer_id,'restored'); END IF;
    PERFORM advance_queue(g);
   END IF;
@@ -1012,14 +1031,16 @@ END; $$;
 -- Refresh queue timers using refresh_all_queues() in the server's scheduler.
 CREATE VIEW public_market AS
 SELECT p.product_id,p.name AS product_name,p.brand_name AS brand,c.name AS category,
- v.variant_id,v.size,v.color,g.condition,'Owl Pai Lei'::TEXT AS sold_by,
+ v.variant_id,v.size,v.color,f.condition,'Owl Pai Lei'::TEXT AS sold_by,
  round(f.asking_price*(1+cfg.platform_fee_percent/100),2) AS display_price,
  cfg.shipping_fee,f.condition_notes,f.defects,
- g.active_since+interval '24 hours' AS turn_expires_at
-FROM queue_groups g JOIN seller_offers f ON f.offer_id=g.active_offer_id
-JOIN product_variants v ON v.variant_id=g.variant_id JOIN products p USING(product_id)
+ g.active_since+interval '24 hours' AS turn_expires_at,f.offer_id
+FROM seller_offers f
+JOIN product_variants v ON v.variant_id=f.variant_id JOIN products p USING(product_id)
 JOIN categories c USING(category_id) CROSS JOIN platform_settings cfg
-WHERE f.status='approved' AND f.available_quantity>0 AND p.active AND v.active;
+LEFT JOIN queue_groups g ON f.condition='new' AND g.active_offer_id=f.offer_id
+WHERE (f.condition='used' OR g.active_offer_id IS NOT NULL)
+ AND f.status='approved' AND f.available_quantity>0 AND p.active AND v.active;
 CREATE VIEW seller_qc_scores AS
 SELECT s.user_id AS seller_id,count(q.inspection_id)::INTEGER AS inspections,
  round(avg(q.seller_score),2) AS average_score,qc_skip_count(s.user_id) AS skipped_opportunities
@@ -1132,5 +1153,119 @@ INSERT INTO assets(offer_id,file_reference,caption) VALUES(3,'demo://offer3/mark
 SELECT review_offer(4,1,'approve','Demo offer approved');
 SELECT review_offer(4,2,'approve','Demo offer approved');
 
+
+-- Shoe catalog demo seed (safe to run again).
+DO $shoe_demo$
+DECLARE
+  admin_id BIGINT;
+  seller_one BIGINT;
+  seller_two BIGINT;
+  shoes_id BIGINT;
+  product_key BIGINT;
+  variant_key BIGINT;
+  offer_key BIGINT;
+  model RECORD;
+  shoe_size TEXT;
+  kind TEXT;
+  seller_key BIGINT;
+  asking NUMERIC;
+BEGIN
+  SELECT user_id INTO STRICT admin_id FROM users WHERE email='admin@owl.test';
+  SELECT user_id INTO STRICT seller_one FROM users WHERE email='seller1@owl.test';
+  SELECT user_id INTO STRICT seller_two FROM users WHERE email='seller2@owl.test';
+  SELECT category_id INTO STRICT shoes_id FROM categories WHERE name='Shoes';
+  FOR model IN SELECT * FROM (VALUES
+    (1,'Adidas','Adidas Samba Demo',2600),
+    (2,'Nike','Nike Dunk Low Demo',2900),
+    (3,'New Balance','New Balance 550 Demo',3200),
+    (4,'ASICS','ASICS Gel 1130 Demo',3100),
+    (5,'Converse','Converse Chuck 70 Demo',2100),
+    (6,'Vans','Vans Old Skool Demo',1900),
+    (7,'Puma','Puma Suede Classic Demo',2200),
+    (8,'Reebok','Reebok Club C 85 Demo',2300),
+    (9,'Nike','Nike Air Max 90 Demo',3600),
+    (10,'New Balance','New Balance 2002R Demo',3900)
+  ) AS models(model_no, brand, model_name, base_price)
+  LOOP
+    INSERT INTO products(category_id,brand_name,name,description,created_by)
+    VALUES(shoes_id,model.brand,model.model_name,'Fictional shoe listing for the classroom demo.',admin_id)
+    ON CONFLICT(name) DO NOTHING RETURNING product_id INTO product_key;
+    IF NOT FOUND THEN CONTINUE; END IF;
+    FOREACH shoe_size IN ARRAY ARRAY['8','9','10','11'] LOOP
+      INSERT INTO product_variants(product_id,size,color,sku)
+      VALUES(product_key,shoe_size,'Standard','OWL-SHOE-DEMO-'||model.model_no||'-'||shoe_size)
+      RETURNING variant_id INTO variant_key;
+      FOREACH kind IN ARRAY ARRAY['new','used'] LOOP
+        FOREACH seller_key IN ARRAY ARRAY[seller_one,seller_two] LOOP
+          asking := model.base_price + (shoe_size::INTEGER - 8)*50
+            + CASE WHEN seller_key=seller_two THEN 150 ELSE 0 END
+            - CASE WHEN kind='used' THEN 600 ELSE 0 END;
+          offer_key := create_offer(seller_key,variant_key,kind,asking,1,
+            CASE WHEN kind<>'used' THEN '' WHEN seller_key=seller_one THEN 'Light marks from normal wear' ELSE 'Small scuff on the side' END,
+            CASE WHEN kind='used' THEN 'Second hand demo' ELSE 'First hand demo' END);
+          PERFORM review_offer(admin_id,offer_key,'approve','Approved classroom shoe demo');
+        END LOOP;
+      END LOOP;
+    END LOOP;
+  END LOOP;
+END;
+$shoe_demo$;
+
+-- Shirt catalog demo seed (safe to run again).
+DO $shirt_demo$
+DECLARE
+  admin_id BIGINT;
+  seller_one BIGINT;
+  seller_two BIGINT;
+  clothing_id BIGINT;
+  product_key BIGINT;
+  variant_key BIGINT;
+  offer_key BIGINT;
+  model RECORD;
+  shirt_size TEXT;
+  kind TEXT;
+  seller_key BIGINT;
+  asking NUMERIC;
+BEGIN
+  SELECT user_id INTO STRICT admin_id FROM users WHERE email='admin@owl.test';
+  SELECT user_id INTO STRICT seller_one FROM users WHERE email='seller1@owl.test';
+  SELECT user_id INTO STRICT seller_two FROM users WHERE email='seller2@owl.test';
+  SELECT category_id INTO STRICT clothing_id FROM categories WHERE name='Clothing';
+  FOR model IN SELECT * FROM (VALUES
+    (1,'Owl Basics','Owl Classic Cotton Tee Demo',590),
+    (2,'Owl Basics','Owl Oversized Tee Demo',690),
+    (3,'Owl Active','Owl Sport Tee Demo',790),
+    (4,'Owl Basics','Owl Striped Tee Demo',650),
+    (5,'Owl Studio','Owl Graphic Tee Demo',750),
+    (6,'Owl Studio','Owl Pocket Tee Demo',620),
+    (7,'Owl Studio','Owl Oxford Shirt Demo',990),
+    (8,'Owl Active','Owl Polo Shirt Demo',850),
+    (9,'Owl Studio','Owl Linen Shirt Demo',1090),
+    (10,'Owl Basics','Owl Long Sleeve Tee Demo',890)
+  ) AS models(model_no, brand, model_name, base_price)
+  LOOP
+    INSERT INTO products(category_id,brand_name,name,description,created_by)
+    VALUES(clothing_id,model.brand,model.model_name,'Fictional shirt listing for the classroom demo.',admin_id)
+    ON CONFLICT(name) DO NOTHING RETURNING product_id INTO product_key;
+    IF NOT FOUND THEN CONTINUE; END IF;
+    FOREACH shirt_size IN ARRAY ARRAY['S','M','L','XL'] LOOP
+      INSERT INTO product_variants(product_id,size,color,sku)
+      VALUES(product_key,shirt_size,'Standard','OWL-SHIRT-DEMO-'||model.model_no||'-'||shirt_size)
+      RETURNING variant_id INTO variant_key;
+      FOREACH kind IN ARRAY ARRAY['new','used'] LOOP
+        FOREACH seller_key IN ARRAY ARRAY[seller_one,seller_two] LOOP
+          asking := model.base_price + (array_position(ARRAY['S','M','L','XL'],shirt_size)-1)*30
+            + CASE WHEN seller_key=seller_two THEN 90 ELSE 0 END
+            - CASE WHEN kind='used' THEN 250 ELSE 0 END;
+          offer_key := create_offer(seller_key,variant_key,kind,asking,1,
+            CASE WHEN kind<>'used' THEN '' WHEN seller_key=seller_one THEN 'Light marks from normal wear' ELSE 'Small scuff on the side' END,
+            CASE WHEN kind='used' THEN 'Second hand demo' ELSE 'First hand demo' END);
+          PERFORM review_offer(admin_id,offer_key,'approve','Approved classroom shirt demo');
+        END LOOP;
+      END LOOP;
+    END LOOP;
+  END LOOP;
+END;
+$shirt_demo$;
 
 COMMIT;
