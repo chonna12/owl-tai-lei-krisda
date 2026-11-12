@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Owl Pai Lei</title>
-  <link rel="stylesheet" href="styles.css?v=db-demo-1">
+  <link rel="stylesheet" href="styles.css?v=login-1">
 </head>
 <body>
   <div class="page">
@@ -23,8 +23,8 @@
       </a>
       <nav class="nav" aria-label="Main"><a class="nav-link" href="/" aria-current="page">Home</a></nav>
       <div class="user">
-        <span id="demo-status" class="user-name">Demo Seller One · Demo mode</span>
-        <span class="avatar" aria-hidden="true">DS</span>
+        <span id="demo-status" class="user-name">Owl Pai Lei</span>
+        <span class="avatar" aria-hidden="true">🦉</span>
       </div>
     </header>
 
@@ -257,6 +257,91 @@
     </div>
   </template>
 
-  <script src="approve.js?v=db-demo-1"></script>
+  <!-- ══════════════════════════════════════════════════════════
+       LOGIN / REGISTER OVERLAY  — controlled by login.js
+  ══════════════════════════════════════════════════════════ -->
+  <div id="login-overlay" class="login-overlay" aria-modal="true" role="dialog" aria-labelledby="login-heading">
+    <div class="login-card">
+
+      <!-- Logo -->
+      <div class="login-logo">
+        <svg viewBox="0 0 60 56" width="38" height="36" aria-hidden="true">
+          <path d="M6 4 L20 12 H40 L54 4 V34 Q54 52 30 52 Q6 52 6 34 Z" fill="#8a5a3c"/>
+          <circle cx="20" cy="30" r="10" fill="#f6ece0"/><circle cx="40" cy="30" r="10" fill="#f6ece0"/>
+          <circle cx="20" cy="30" r="5"  fill="#8a5a3c"/><circle cx="40" cy="30" r="5"  fill="#8a5a3c"/>
+          <path d="M26 38 H34 L30 45 Z" fill="#e9c9a0"/>
+        </svg>
+        <span class="login-logo-name">owl pai lei</span>
+      </div>
+
+      <!-- Tab switcher -->
+      <div class="login-tabs" role="tablist">
+        <button id="tab-login"    class="login-tab login-tab-active" role="tab" aria-selected="true"  aria-controls="panel-login">Sign in</button>
+        <button id="tab-register" class="login-tab"                  role="tab" aria-selected="false" aria-controls="panel-register">Register</button>
+      </div>
+
+      <!-- ── Sign-in panel ── -->
+      <div id="panel-login" role="tabpanel" aria-labelledby="tab-login">
+        <h1 id="login-heading" class="login-heading">Sign in</h1>
+        <p class="login-sub">Welcome back — sign in to your account.</p>
+
+        <form id="login-form" class="login-form" novalidate>
+          <div class="login-field">
+            <label class="login-label" for="login-email">Email</label>
+            <input id="login-email" class="login-input" type="email"
+              autocomplete="email" required placeholder="you@example.com">
+          </div>
+
+          <div class="login-field">
+            <label class="login-label" for="login-password">Password</label>
+            <input id="login-password" class="login-input" type="password"
+              autocomplete="current-password" required placeholder="••••••••">
+          </div>
+
+          <p id="login-error" class="login-error" role="alert" hidden></p>
+          <button id="login-submit" class="login-btn" type="submit">Sign in</button>
+        </form>
+      </div>
+
+      <!-- ── Register panel ── -->
+      <div id="panel-register" role="tabpanel" aria-labelledby="tab-register" hidden>
+        <h1 class="login-heading">Create account</h1>
+        <p class="login-sub">Fill in your details to get started.</p>
+
+        <form id="register-form" class="login-form" novalidate>
+          <div class="login-field">
+            <label class="login-label" for="reg-name">Full name</label>
+            <input id="reg-name" class="login-input" type="text"
+              autocomplete="name" required placeholder="Jane Doe">
+          </div>
+
+          <div class="login-field">
+            <label class="login-label" for="reg-email">Email</label>
+            <input id="reg-email" class="login-input" type="email"
+              autocomplete="email" required placeholder="you@example.com">
+          </div>
+
+          <div class="login-field">
+            <label class="login-label" for="reg-password">Password</label>
+            <input id="reg-password" class="login-input" type="password"
+              autocomplete="new-password" required placeholder="At least 8 characters">
+          </div>
+
+          <div class="login-field">
+            <label class="login-label" for="reg-confirm">Confirm password</label>
+            <input id="reg-confirm" class="login-input" type="password"
+              autocomplete="new-password" required placeholder="••••••••">
+          </div>
+
+          <p id="register-error" class="login-error" role="alert" hidden></p>
+          <button id="register-submit" class="login-btn" type="submit">Create account</button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="login.js?v=login-1"></script>
+  <script src="approve.js?v=login-1"></script>
 </body>
 </html>
