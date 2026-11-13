@@ -39,10 +39,21 @@
     const nameEl   = $('demo-status');
     const avatarEl = document.querySelector('.avatar');
 
-    if (nameEl) {
-      nameEl.textContent = user.name
-        ? user.name + (user.canSell ? ' · Seller' : ' · Buyer')
-        : 'Signed in';
+    if (nameEl && user.name) {
+      // Name text
+      nameEl.textContent = user.name;
+
+      // Role badge chip — remove old one first if re-logging in
+      const existing = document.getElementById('user-role-badge');
+      if (existing) existing.remove();
+
+      const badge = document.createElement('span');
+      badge.id = 'user-role-badge';
+      badge.className = user.canSell ? 'role-badge role-badge-seller' : 'role-badge role-badge-buyer';
+      badge.textContent = user.canSell ? 'Seller' : 'Buyer';
+      nameEl.insertAdjacentElement('afterend', badge);
+    } else if (nameEl) {
+      nameEl.textContent = 'Signed in';
     }
 
     if (avatarEl && user.name) {
