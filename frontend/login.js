@@ -215,7 +215,18 @@
       const res = await fetch('/api/me', { credentials: 'same-origin' });
       if (res.ok) {
         const data = await res.json();
-        updateHeaderUser(data.user || {});
+        const user = data.user || {};
+
+        // If demo seller mode is OFF, automatically clear any leftover demo session
+        if (!window.DemoSeller && user.email === 'seller1@owl.test') {
+          try {
+            await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
+          } catch (_) {}
+          window.currentUser = null;
+          return false; // Show login/register screen for real users
+        }
+
+        updateHeaderUser(user);
         return true;
       }
     } catch (_) { /* network error — fall through to login */ }
