@@ -1,417 +1,352 @@
-# Data Dictionary — Owl Pai Lei
+# Database dictionary
 
-Generated from the installed PostgreSQL schema. 31 tables.
+Current consolidated schema with 23 tables.
 
 ## activity_logs
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| log_id | BIGINT | NO | PK | Generated identity |
-| event_source | VARCHAR(10) | NO | UK |  |
-| event_type | VARCHAR(60) | NO |  | 'status_changed'::character varying |
-| actor_id | BIGINT | YES | FK → users.user_id |  |
-| order_id | BIGINT | YES | FK → orders.order_id |  |
-| shipment_id | BIGINT | YES | FK → shipments.shipment_id |  |
-| group_id | BIGINT | YES | FK → queue_groups.group_id |  |
-| offer_id | BIGINT | YES | FK → seller_offers.offer_id |  |
-| refund_id | BIGINT | YES | FK → refunds.refund_id |  |
-| payout_id | BIGINT | YES | FK → payouts.payout_id |  |
-| verification_id | BIGINT | YES | FK → seller_verifications.verification_id |  |
-| charge_id | BIGINT | YES | FK → seller_charges.charge_id |  |
-| status | VARCHAR(40) | YES |  |  |
-| location | VARCHAR(150) | YES |  |  |
-| note | TEXT | NO |  | ''::text |
-| details | JSONB | NO |  | '{}'::jsonb |
-| entity_type | VARCHAR(40) | YES |  |  |
-| entity_id | BIGINT | YES |  |  |
-| source_record_id | BIGINT | YES | UK |  |
-| created_at | TIMESTAMPTZ | NO |  | now() |
+| log_id | bigint | NO | PK |  |
+| event_source | character varying(10) | NO |  |  |
+| event_type | character varying(60) | NO |  |  |
+| actor_id | bigint | YES |  | users.user_id |
+| order_id | bigint | YES |  | orders.order_id |
+| shipment_id | bigint | YES |  | shipments.shipment_id |
+| group_id | bigint | YES |  | queue_groups.group_id |
+| offer_id | bigint | YES |  | seller_offers.offer_id |
+| refund_id | bigint | YES |  | refunds.refund_id |
+| payout_id | bigint | YES |  | payouts.payout_id |
+| verification_id | bigint | YES |  | users.user_id |
+| charge_id | bigint | YES |  | seller_charges.charge_id |
+| status | character varying(40) | YES |  |  |
+| location | character varying(150) | YES |  |  |
+| note | text | NO |  |  |
+| details | jsonb | NO |  |  |
+| entity_type | character varying(40) | YES |  |  |
+| entity_id | bigint | YES |  |  |
+| source_record_id | bigint | YES |  |  |
+| created_at | timestamp with time zone | NO |  |  |
 
 ## addresses
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| address_id | BIGINT | NO | PK | Generated identity |
-| user_id | BIGINT | NO | FK → users.user_id |  |
-| recipient_name | VARCHAR(100) | NO |  |  |
-| phone | VARCHAR(30) | NO |  |  |
-| address_line | TEXT | NO |  |  |
-| district | VARCHAR(100) | NO |  |  |
-| province | VARCHAR(100) | NO |  |  |
-| postal_code | VARCHAR(15) | NO |  |  |
-| is_default | BOOLEAN | NO |  | false |
-| archived | BOOLEAN | NO |  | false |
+| address_id | bigint | NO | PK |  |
+| user_id | bigint | NO |  | users.user_id |
+| recipient_name | character varying(100) | NO |  |  |
+| phone | character varying(30) | NO |  |  |
+| address_line | text | NO |  |  |
+| district | character varying(100) | NO |  |  |
+| province | character varying(100) | NO |  |  |
+| postal_code | character varying(15) | NO |  |  |
+| is_default | boolean | NO |  |  |
+| archived | boolean | NO |  |  |
 
 ## assets
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| asset_id | BIGINT | NO | PK | Generated identity |
-| product_id | BIGINT | YES | FK → products.product_id |  |
-| offer_id | BIGINT | YES | FK → seller_offers.offer_id |  |
-| inspection_id | BIGINT | YES | FK → qc_inspections.inspection_id |  |
-| file_reference | TEXT | NO |  |  |
-| caption | TEXT | NO |  | ''::text |
-| sort_order | SMALLINT | NO |  | 0 |
-| source_table | VARCHAR(30) | YES | UK |  |
-| source_record_id | BIGINT | YES | UK |  |
-
-## cancellation_requests
-
-| Column | Type | Null allowed | Key / target | Default |
-|---|---|---|---|---|
-| request_id | BIGINT | NO | PK | Generated identity |
-| order_id | BIGINT | NO | UK, FK → orders.order_id |  |
-| buyer_id | BIGINT | NO | FK → users.user_id |  |
-| reason | TEXT | NO |  |  |
-| status | VARCHAR(20) | NO |  | 'pending'::character varying |
-| reviewed_by | BIGINT | YES | FK → users.user_id |  |
-| reviewed_at | TIMESTAMPTZ | YES |  |  |
-| created_at | TIMESTAMPTZ | NO |  | now() |
-
-## carts
-
-| Column | Type | Null allowed | Key / target | Default |
-|---|---|---|---|---|
-| cart_id | BIGINT | NO | PK | Generated identity |
-| user_id | BIGINT | NO | UK, FK → users.user_id |  |
-| variant_id | BIGINT | YES | FK → product_variants.variant_id |  |
-| condition | VARCHAR(10) | YES |  |  |
-| quantity | SMALLINT | NO |  | 1 |
-| added_at | TIMESTAMPTZ | YES |  |  |
-
-## categories
-
-| Column | Type | Null allowed | Key / target | Default |
-|---|---|---|---|---|
-| category_id | BIGINT | NO | PK | Generated identity |
-| name | VARCHAR(100) | NO | UK |  |
+| asset_id | bigint | NO | PK |  |
+| product_id | bigint | YES |  | products.product_id |
+| offer_id | bigint | YES |  | seller_offers.offer_id |
+| inspection_id | bigint | YES |  | qc_inspections.inspection_id |
+| file_reference | text | NO |  |  |
+| caption | text | NO |  |  |
+| sort_order | smallint | NO |  |  |
+| source_table | character varying(30) | YES |  |  |
+| source_record_id | bigint | YES |  |  |
 
 ## coupon_redemptions
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| redemption_id | BIGINT | NO | PK | Generated identity |
-| coupon_id | BIGINT | NO | UK, FK → coupons.coupon_id |  |
-| user_id | BIGINT | NO | UK, FK → users.user_id |  |
-| order_id | BIGINT | NO | UK, FK → orders.order_id |  |
-| discount_applied | NUMERIC(12,2) | NO |  |  |
-| redeemed_at | TIMESTAMPTZ | NO |  | now() |
+| redemption_id | bigint | NO | PK |  |
+| coupon_id | bigint | NO |  | coupons.coupon_id |
+| user_id | bigint | NO |  | users.user_id |
+| order_id | bigint | NO |  | orders.order_id |
+| discount_applied | numeric(12,2) | NO |  |  |
+| redeemed_at | timestamp with time zone | NO |  |  |
 
 ## coupons
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| coupon_id | BIGINT | NO | PK | Generated identity |
-| code | VARCHAR(40) | NO | UK |  |
-| discount_type | VARCHAR(10) | NO |  |  |
-| value | NUMERIC(12,2) | NO |  |  |
-| min_spend | NUMERIC(12,2) | NO |  | 0 |
-| starts_at | TIMESTAMPTZ | NO |  |  |
-| expires_at | TIMESTAMPTZ | NO |  |  |
-| usage_limit | INTEGER | NO |  |  |
-| active | BOOLEAN | NO |  | true |
-| created_by | BIGINT | NO | FK → users.user_id |  |
+| coupon_id | bigint | NO | PK |  |
+| code | character varying(40) | NO |  |  |
+| discount_type | character varying(10) | NO |  |  |
+| value | numeric(12,2) | NO |  |  |
+| min_spend | numeric(12,2) | NO |  |  |
+| starts_at | timestamp with time zone | NO |  |  |
+| expires_at | timestamp with time zone | NO |  |  |
+| usage_limit | integer | NO |  |  |
+| active | boolean | NO |  |  |
+| created_by | bigint | NO |  | users.user_id |
 
 ## notifications
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| notification_id | BIGINT | NO | PK | Generated identity |
-| user_id | BIGINT | NO | FK → users.user_id |  |
-| order_id | BIGINT | YES | FK → orders.order_id |  |
-| offer_id | BIGINT | YES | FK → seller_offers.offer_id |  |
-| type | VARCHAR(40) | NO |  |  |
-| message | TEXT | NO |  |  |
-| is_read | BOOLEAN | NO |  | false |
-| created_at | TIMESTAMPTZ | NO |  | now() |
+| notification_id | bigint | NO | PK |  |
+| user_id | bigint | NO |  | users.user_id |
+| order_id | bigint | YES |  | orders.order_id |
+| offer_id | bigint | YES |  | seller_offers.offer_id |
+| type | character varying(40) | NO |  |  |
+| message | text | NO |  |  |
+| is_read | boolean | NO |  |  |
+| created_at | timestamp with time zone | NO |  |  |
 
 ## order_items
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| order_item_id | BIGINT | NO | PK | Generated identity |
-| order_id | BIGINT | NO | UK, FK → orders.order_id |  |
-| offer_id | BIGINT | NO | FK → seller_offers.offer_id |  |
-| seller_id | BIGINT | NO | FK → users.user_id |  |
-| variant_id | BIGINT | NO | FK → product_variants.variant_id |  |
-| product_name_snapshot | VARCHAR(150) | NO |  |  |
-| size_snapshot | VARCHAR(30) | NO |  |  |
-| color_snapshot | VARCHAR(50) | NO |  |  |
-| condition_snapshot | VARCHAR(10) | NO |  |  |
-| defects_snapshot | TEXT | NO |  |  |
-| quantity | SMALLINT | NO |  | 1 |
-| unit_price | NUMERIC(12,2) | NO |  |  |
-| fulfillment_status | VARCHAR(30) | NO |  | 'awaiting_payment'::character varying |
+| order_item_id | bigint | NO | PK |  |
+| order_id | bigint | NO |  | orders.order_id |
+| offer_id | bigint | NO |  | seller_offers.offer_id |
+| seller_id | bigint | NO |  | users.user_id |
+| variant_id | bigint | NO |  | product_variants.variant_id |
+| product_name_snapshot | character varying(150) | NO |  |  |
+| size_snapshot | character varying(30) | NO |  |  |
+| color_snapshot | character varying(50) | NO |  |  |
+| condition_snapshot | character varying(10) | NO |  |  |
+| defects_snapshot | text | NO |  |  |
+| quantity | smallint | NO |  |  |
+| unit_price | numeric(12,2) | NO |  |  |
+| fulfillment_status | character varying(30) | NO |  |  |
 
 ## orders
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| order_id | BIGINT | NO | PK | Generated identity |
-| buyer_id | BIGINT | NO | FK → users.user_id |  |
-| status | VARCHAR(20) | NO |  | 'awaiting_payment'::character varying |
-| item_subtotal | NUMERIC(12,2) | NO |  |  |
-| platform_fee | NUMERIC(12,2) | NO |  |  |
-| discount | NUMERIC(12,2) | NO |  | 0 |
-| shipping_fee | NUMERIC(12,2) | NO |  |  |
-| total | NUMERIC(12,2) | NO |  |  |
-| coupon_id | BIGINT | YES | FK → coupons.coupon_id |  |
-| created_at | TIMESTAMPTZ | NO |  | now() |
-| completed_at | TIMESTAMPTZ | YES |  |  |
-| shipping_recipient_name | VARCHAR(100) | YES |  |  |
-| shipping_phone | VARCHAR(30) | YES |  |  |
-| shipping_address_line | TEXT | YES |  |  |
-| shipping_district | VARCHAR(100) | YES |  |  |
-| shipping_province | VARCHAR(100) | YES |  |  |
-| shipping_postal_code | VARCHAR(15) | YES |  |  |
+| order_id | bigint | NO | PK |  |
+| buyer_id | bigint | NO |  | users.user_id |
+| status | character varying(20) | NO |  |  |
+| item_subtotal | numeric(12,2) | NO |  |  |
+| platform_fee | numeric(12,2) | NO |  |  |
+| discount | numeric(12,2) | NO |  |  |
+| shipping_fee | numeric(12,2) | NO |  |  |
+| total | numeric(12,2) | NO |  |  |
+| coupon_id | bigint | YES |  | coupons.coupon_id |
+| created_at | timestamp with time zone | NO |  |  |
+| cancellation_reason | text | YES |  |  |
+| cancellation_status | character varying(20) | YES |  |  |
+| cancellation_reviewed_by | bigint | YES |  | users.user_id |
+| cancellation_reviewed_at | timestamp with time zone | YES |  |  |
+| cancellation_created_at | timestamp with time zone | YES |  |  |
+| completed_at | timestamp with time zone | YES |  |  |
+| shipping_recipient_name | character varying(100) | YES |  |  |
+| shipping_phone | character varying(30) | YES |  |  |
+| shipping_address_line | text | YES |  |  |
+| shipping_district | character varying(100) | YES |  |  |
+| shipping_province | character varying(100) | YES |  |  |
+| shipping_postal_code | character varying(15) | YES |  |  |
 
 ## payments
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| payment_id | BIGINT | NO | PK | Generated identity |
-| order_id | BIGINT | NO | FK → orders.order_id |  |
-| amount | NUMERIC(12,2) | NO |  |  |
-| method | VARCHAR(30) | NO |  |  |
-| status | VARCHAR(20) | NO |  |  |
-| reference | VARCHAR(120) | NO | UK |  |
-| verified_by | BIGINT | YES | FK → users.user_id |  |
-| paid_at | TIMESTAMPTZ | YES |  |  |
+| payment_id | bigint | NO | PK |  |
+| order_id | bigint | NO |  | orders.order_id |
+| amount | numeric(12,2) | NO |  |  |
+| method | character varying(30) | NO |  |  |
+| status | character varying(20) | NO |  |  |
+| reference | character varying(120) | NO |  |  |
+| verified_by | bigint | YES |  | users.user_id |
+| paid_at | timestamp with time zone | YES |  |  |
 
 ## payout_items
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| payout_id | BIGINT | NO | PK, FK → payouts.payout_id |  |
-| order_item_id | BIGINT | NO | PK, UK, FK → order_items.order_item_id |  |
-| amount | NUMERIC(12,2) | NO |  |  |
+| payout_id | bigint | NO | PK | payouts.payout_id |
+| order_item_id | bigint | NO | PK | order_items.order_item_id |
+| amount | numeric(12,2) | NO |  |  |
 
 ## payouts
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| payout_id | BIGINT | NO | PK | Generated identity |
-| seller_id | BIGINT | NO | FK → users.user_id |  |
-| bank_account_id | BIGINT | NO | FK → seller_bank_accounts.bank_account_id |  |
-| bank_name_snapshot | VARCHAR(100) | NO |  |  |
-| account_holder_snapshot | VARCHAR(100) | NO |  |  |
-| account_number_snapshot | VARCHAR(50) | NO |  |  |
-| amount | NUMERIC(12,2) | NO |  |  |
-| status | VARCHAR(20) | NO |  | 'pending'::character varying |
-| created_by | BIGINT | NO | FK → users.user_id |  |
-| created_at | TIMESTAMPTZ | NO |  | now() |
-| approved_by | BIGINT | YES | FK → users.user_id |  |
-| approved_at | TIMESTAMPTZ | YES |  |  |
-| paid_by | BIGINT | YES | FK → users.user_id |  |
-| paid_at | TIMESTAMPTZ | YES |  |  |
-| transfer_reference | VARCHAR(120) | YES | UK |  |
-
-## platform_settings
-
-| Column | Type | Null allowed | Key / target | Default |
-|---|---|---|---|---|
-| migration_reference_data | JSONB | NO |  | '{}'::jsonb |
-| settings_id | SMALLINT | NO | PK |  |
-| platform_fee_percent | NUMERIC(5,2) | NO |  |  |
-| shipping_fee | NUMERIC(12,2) | NO |  |  |
-| active_turn_hours | SMALLINT | NO |  | 24 |
-| note | TEXT | NO |  |  |
+| payout_id | bigint | NO | PK |  |
+| seller_id | bigint | NO |  | users.user_id |
+| bank_account_id | bigint | NO |  | users.user_id |
+| bank_name_snapshot | character varying(100) | NO |  |  |
+| account_holder_snapshot | character varying(100) | NO |  |  |
+| account_number_snapshot | character varying(50) | NO |  |  |
+| amount | numeric(12,2) | NO |  |  |
+| status | character varying(20) | NO |  |  |
+| created_by | bigint | NO |  | users.user_id |
+| created_at | timestamp with time zone | NO |  |  |
+| approved_by | bigint | YES |  | users.user_id |
+| approved_at | timestamp with time zone | YES |  |  |
+| paid_by | bigint | YES |  | users.user_id |
+| paid_at | timestamp with time zone | YES |  |  |
+| transfer_reference | character varying(120) | YES |  |  |
 
 ## product_variants
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| variant_id | BIGINT | NO | PK | Generated identity |
-| product_id | BIGINT | NO | UK, FK → products.product_id |  |
-| size | VARCHAR(30) | NO | UK |  |
-| color | VARCHAR(50) | NO | UK |  |
-| sku | VARCHAR(80) | NO | UK |  |
-| active | BOOLEAN | NO |  | true |
+| variant_id | bigint | NO | PK |  |
+| product_id | bigint | NO |  | products.product_id |
+| size | character varying(30) | NO |  |  |
+| color | character varying(50) | NO |  |  |
+| sku | character varying(80) | NO |  |  |
+| active | boolean | NO |  |  |
 
 ## products
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| product_id | BIGINT | NO | PK | Generated identity |
-| category_id | BIGINT | NO | FK → categories.category_id |  |
-| brand_name | VARCHAR(100) | NO |  |  |
-| name | VARCHAR(150) | NO | UK |  |
-| description | TEXT | NO |  | ''::text |
-| active | BOOLEAN | NO |  | true |
-| created_by | BIGINT | NO | FK → users.user_id |  |
-| created_at | TIMESTAMPTZ | NO |  | now() |
+| product_id | bigint | NO | PK |  |
+| category | character varying(100) | NO |  |  |
+| brand_name | character varying(100) | NO |  |  |
+| name | character varying(150) | NO |  |  |
+| description | text | NO |  |  |
+| active | boolean | NO |  |  |
+| created_by | bigint | NO |  | users.user_id |
+| created_at | timestamp with time zone | NO |  |  |
 
 ## qc_inspections
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| inspection_id | BIGINT | NO | PK | Generated identity |
-| order_item_id | BIGINT | NO | UK, FK → order_items.order_item_id |  |
-| inspector_id | BIGINT | NO | FK → users.user_id |  |
-| result | VARCHAR(10) | NO |  |  |
-| seller_score | SMALLINT | NO |  |  |
-| notes | TEXT | NO |  |  |
-| inspected_at | TIMESTAMPTZ | NO |  | now() |
+| inspection_id | bigint | NO | PK |  |
+| order_item_id | bigint | NO |  | order_items.order_item_id |
+| inspector_id | bigint | NO |  | users.user_id |
+| result | character varying(10) | NO |  |  |
+| seller_score | smallint | NO |  |  |
+| notes | text | NO |  |  |
+| inspected_at | timestamp with time zone | NO |  |  |
 
 ## queue_entries
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| offer_id | BIGINT | NO | PK, FK → seller_offers.offer_id |  |
-| group_id | BIGINT | NO | UK, FK → queue_groups.group_id |  |
-| position | BIGINT | NO | UK |  |
-| skips_remaining | SMALLINT | NO |  |  |
+| offer_id | bigint | NO | PK | seller_offers.offer_id |
+| group_id | bigint | NO |  | queue_groups.group_id |
+| position | bigint | NO |  |  |
+| skips_remaining | smallint | NO |  |  |
 
 ## queue_groups
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| group_id | BIGINT | NO | PK | Generated identity |
-| variant_id | BIGINT | NO | UK, FK → product_variants.variant_id |  |
-| condition | VARCHAR(10) | NO | UK |  |
-| active_offer_id | BIGINT | YES | FK → seller_offers.offer_id |  |
-| active_since | TIMESTAMPTZ | YES |  |  |
-| next_position | BIGINT | NO |  | 0 |
+| group_id | bigint | NO | PK |  |
+| variant_id | bigint | NO |  | product_variants.variant_id |
+| condition | character varying(10) | NO |  |  |
+| active_offer_id | bigint | YES |  | seller_offers.offer_id |
+| active_since | timestamp with time zone | YES |  |  |
+| next_position | bigint | NO |  |  |
 
 ## refunds
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| refund_id | BIGINT | NO | PK | Generated identity |
-| order_id | BIGINT | NO | UK, FK → orders.order_id |  |
-| payment_id | BIGINT | NO | UK, FK → payments.payment_id |  |
-| amount | NUMERIC(12,2) | NO |  |  |
-| reason | TEXT | NO |  |  |
-| status | VARCHAR(20) | NO |  | 'requested'::character varying |
-| approved_by | BIGINT | YES | FK → users.user_id |  |
-| approved_at | TIMESTAMPTZ | YES |  |  |
-| paid_by | BIGINT | YES | FK → users.user_id |  |
-| paid_at | TIMESTAMPTZ | YES |  |  |
-| transfer_reference | VARCHAR(120) | YES | UK |  |
-
-## roles
-
-| Column | Type | Null allowed | Key / target | Default |
-|---|---|---|---|---|
-| role_id | SMALLINT | NO | PK | Generated identity |
-| name | VARCHAR(20) | NO | UK |  |
-
-## seller_bank_accounts
-
-| Column | Type | Null allowed | Key / target | Default |
-|---|---|---|---|---|
-| bank_account_id | BIGINT | NO | PK | Generated identity |
-| seller_id | BIGINT | NO | FK → users.user_id |  |
-| bank_name | VARCHAR(100) | NO |  |  |
-| account_holder | VARCHAR(100) | NO |  |  |
-| account_number | VARCHAR(50) | NO |  |  |
-| is_verified | BOOLEAN | NO |  | false |
-| archived | BOOLEAN | NO |  | false |
+| refund_id | bigint | NO | PK |  |
+| order_id | bigint | NO |  | orders.order_id |
+| payment_id | bigint | NO |  | payments.payment_id |
+| amount | numeric(12,2) | NO |  |  |
+| reason | text | NO |  |  |
+| status | character varying(20) | NO |  |  |
+| approved_by | bigint | YES |  | users.user_id |
+| approved_at | timestamp with time zone | YES |  |  |
+| paid_by | bigint | YES |  | users.user_id |
+| paid_at | timestamp with time zone | YES |  |  |
+| transfer_reference | character varying(120) | YES |  |  |
 
 ## seller_charges
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| charge_id | BIGINT | NO | PK | Generated identity |
-| seller_id | BIGINT | NO | FK → users.user_id |  |
-| shipment_id | BIGINT | NO | UK, FK → shipments.shipment_id |  |
-| amount | NUMERIC(12,2) | NO |  |  |
-| reason | VARCHAR(30) | NO |  | 'return_shipping'::character varying |
-| status | VARCHAR(20) | NO |  | 'unpaid'::character varying |
-| payment_reference | VARCHAR(120) | YES |  |  |
-| recorded_by | BIGINT | NO | FK → users.user_id |  |
-| paid_at | TIMESTAMPTZ | YES |  |  |
+| charge_id | bigint | NO | PK |  |
+| seller_id | bigint | NO |  | users.user_id |
+| shipment_id | bigint | NO |  | shipments.shipment_id |
+| amount | numeric(12,2) | NO |  |  |
+| reason | character varying(30) | NO |  |  |
+| status | character varying(20) | NO |  |  |
+| payment_reference | character varying(120) | YES |  |  |
+| recorded_by | bigint | NO |  | users.user_id |
+| paid_at | timestamp with time zone | YES |  |  |
 
 ## seller_offers
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| offer_id | BIGINT | NO | PK | Generated identity |
-| seller_id | BIGINT | NO | FK → users.user_id |  |
-| variant_id | BIGINT | NO | FK → product_variants.variant_id |  |
-| condition | VARCHAR(10) | NO |  |  |
-| condition_notes | TEXT | NO |  | ''::text |
-| defects | TEXT | NO |  | ''::text |
-| asking_price | NUMERIC(12,2) | NO |  |  |
-| available_quantity | INTEGER | NO |  |  |
-| status | VARCHAR(20) | NO |  | 'pending'::character varying |
-| created_at | TIMESTAMPTZ | NO |  | now() |
-| review_decision | VARCHAR(10) | YES |  |  |
-| reviewed_by | BIGINT | YES | FK → users.user_id |  |
-| review_reason | TEXT | YES |  |  |
-| reviewed_at | TIMESTAMPTZ | YES |  |  |
-
-## seller_verifications
-
-| Column | Type | Null allowed | Key / target | Default |
-|---|---|---|---|---|
-| verification_id | BIGINT | NO | PK | Generated identity |
-| seller_id | BIGINT | NO | FK → users.user_id |  |
-| id_document_reference | TEXT | NO |  |  |
-| bank_document_reference | TEXT | NO |  |  |
-| status | VARCHAR(20) | NO |  | 'pending'::character varying |
-| reviewer_id | BIGINT | YES | FK → users.user_id |  |
-| review_note | TEXT | YES |  |  |
-| submitted_at | TIMESTAMPTZ | NO |  | now() |
-| reviewed_at | TIMESTAMPTZ | YES |  |  |
+| offer_id | bigint | NO | PK |  |
+| seller_id | bigint | NO |  | users.user_id |
+| variant_id | bigint | NO |  | product_variants.variant_id |
+| condition | character varying(10) | NO |  |  |
+| condition_notes | text | NO |  |  |
+| defects | text | NO |  |  |
+| asking_price | numeric(12,2) | NO |  |  |
+| available_quantity | integer | NO |  |  |
+| status | character varying(20) | NO |  |  |
+| created_at | timestamp with time zone | NO |  |  |
+| review_decision | character varying(10) | YES |  |  |
+| reviewed_by | bigint | YES |  | users.user_id |
+| review_reason | text | YES |  |  |
+| reviewed_at | timestamp with time zone | YES |  |  |
 
 ## sessions
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| session_id | BIGINT | NO | PK | Generated identity |
-| user_id | BIGINT | NO | FK → users.user_id |  |
-| token_hash | VARCHAR(64) | NO | UK |  |
-| expires_at | TIMESTAMPTZ | NO |  |  |
-| revoked_at | TIMESTAMPTZ | YES |  |  |
+| session_id | bigint | NO | PK |  |
+| user_id | bigint | NO |  | users.user_id |
+| token_hash | character(64) | NO |  |  |
+| expires_at | timestamp with time zone | NO |  |  |
+| revoked_at | timestamp with time zone | YES |  |  |
 
 ## shipments
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| shipment_id | BIGINT | NO | PK | Generated identity |
-| order_item_id | BIGINT | NO | UK, FK → order_items.order_item_id |  |
-| leg | VARCHAR(20) | NO | UK |  |
-| carrier | VARCHAR(80) | NO | UK |  |
-| tracking_number | VARCHAR(120) | NO | UK |  |
-| status | VARCHAR(20) | NO |  | 'in_transit'::character varying |
-| shipping_cost | NUMERIC(12,2) | NO |  | 0 |
-| payer | VARCHAR(10) | NO |  |  |
-| created_by | BIGINT | NO | FK → users.user_id |  |
-| shipped_at | TIMESTAMPTZ | NO |  | now() |
-| delivered_at | TIMESTAMPTZ | YES |  |  |
-
-## user_roles
-
-| Column | Type | Null allowed | Key / target | Default |
-|---|---|---|---|---|
-| user_id | BIGINT | NO | PK, FK → users.user_id |  |
-| role_id | SMALLINT | NO | PK, FK → roles.role_id |  |
+| shipment_id | bigint | NO | PK |  |
+| order_item_id | bigint | NO |  | order_items.order_item_id |
+| leg | character varying(20) | NO |  |  |
+| carrier | character varying(80) | NO |  |  |
+| tracking_number | character varying(120) | NO |  |  |
+| status | character varying(20) | NO |  |  |
+| shipping_cost | numeric(12,2) | NO |  |  |
+| payer | character varying(10) | NO |  |  |
+| created_by | bigint | NO |  | users.user_id |
+| shipped_at | timestamp with time zone | NO |  |  |
+| delivered_at | timestamp with time zone | YES |  |  |
 
 ## users
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| user_id | BIGINT | NO | PK | Generated identity |
-| full_name | VARCHAR(100) | NO |  |  |
-| email | VARCHAR(254) | NO | UK |  |
-| phone | VARCHAR(30) | YES |  |  |
-| password_hash | TEXT | NO |  |  |
-| status | VARCHAR(20) | NO |  | 'active'::character varying |
-| created_at | TIMESTAMPTZ | NO |  | now() |
-| seller_display_name | VARCHAR(100) | YES |  |  |
-| seller_status | VARCHAR(20) | YES |  |  |
-| seller_since | TIMESTAMPTZ | YES |  |  |
+| user_id | bigint | NO | PK |  |
+| full_name | character varying(100) | NO |  |  |
+| email | character varying(254) | NO |  |  |
+| phone | character varying(30) | YES |  |  |
+| password_hash | text | NO |  |  |
+| status | character varying(20) | NO |  |  |
+| created_at | timestamp with time zone | NO |  |  |
+| is_buyer | boolean | NO |  |  |
+| is_seller | boolean | NO |  |  |
+| is_admin | boolean | NO |  |  |
+| is_qc | boolean | NO |  |  |
+| bank_name | character varying(100) | YES |  |  |
+| account_holder | character varying(100) | YES |  |  |
+| account_number | character varying(50) | YES |  |  |
+| bank_verified | boolean | NO |  |  |
+| bank_archived | boolean | NO |  |  |
+| id_document_reference | text | YES |  |  |
+| bank_document_reference | text | YES |  |  |
+| verification_status | character varying(20) | YES |  |  |
+| verification_reviewer_id | bigint | YES |  | users.user_id |
+| verification_review_note | text | YES |  |  |
+| verification_submitted_at | timestamp with time zone | YES |  |  |
+| verification_reviewed_at | timestamp with time zone | YES |  |  |
+| seller_display_name | character varying(100) | YES |  |  |
+| seller_status | character varying(20) | YES |  |  |
+| seller_since | timestamp with time zone | YES |  |  |
 
 ## wishlist_items
 
-| Column | Type | Null allowed | Key / target | Default |
+| Column | Type | Nullable | Key | References |
 |---|---|---|---|---|
-| user_id | BIGINT | NO | PK, FK → users.user_id |  |
-| product_id | BIGINT | NO | PK, FK → products.product_id |  |
-| added_at | TIMESTAMPTZ | NO |  | now() |
-
-## Reading the ER
-
-The diagram summarizes foreign-key links. Optionality and composite/unique cardinalities are specified in this dictionary and the SQL constraints, not exhaustively in the compact overview.
+| user_id | bigint | NO | PK | users.user_id |
+| product_id | bigint | NO | PK | products.product_id |
+| added_at | timestamp with time zone | NO |  |  |
