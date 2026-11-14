@@ -1,11 +1,7 @@
 import { mountBuyerRoutes } from './buyer.js';
 import express from 'express';
 import pg from 'pg';
-<<<<<<< HEAD
-import { hashPassword, verifyPassword, newToken, tokenHash, readToken } from './security.js';
-=======
 import { verifyPassword, newToken, tokenHash, readToken } from './security.js';
->>>>>>> origin/backend-es2
 import { validatePhotos, savePhotos } from './photos.js';
 import { fileURLToPath } from 'node:url';
 
@@ -33,57 +29,17 @@ app.post('/api/login', async (req, res) => {
   attempt.count++;
   if (typeof req.body.email !== 'string' || typeof req.body.password !== 'string' || req.body.password.length > 200) return res.status(400).json({ error: 'Enter your email and password' });
   const { rows } = await pool.query(`SELECT u.* FROM users u WHERE email=$1 AND status='active'
-<<<<<<< HEAD
-    AND EXISTS(SELECT 1 FROM user_roles ur JOIN roles r USING(role_id) WHERE ur.user_id=u.user_id AND r.name IN ('seller','buyer'))`, [req.body.email.trim().toLowerCase()]);
-=======
     AND (u.is_seller OR u.is_buyer)`, [req.body.email.trim().toLowerCase()]);
->>>>>>> origin/backend-es2
   const user = rows[0];
   if (!user || !verifyPassword(req.body.password, user.password_hash)) return res.status(401).json({ error: 'Email or password is incorrect, or this account is not active.' });
   const token = newToken(); await pool.query("INSERT INTO sessions(user_id,token_hash,expires_at) VALUES($1,$2,now()+interval '8 hours')", [user.user_id, tokenHash(token)]);
   res.cookie('owl_session', token, { httpOnly: true, sameSite: 'strict', maxAge: 8 * 3600000, path: '/' });
   attempts.delete(key); res.json({ user: { name: user.full_name, email: user.email, canSell: user.seller_status === 'active' } });
 });
-<<<<<<< HEAD
-app.post('/api/register', async (req, res) => {
-  const { full_name, email, password } = req.body;
-  if (typeof full_name !== 'string' || full_name.trim().length < 2 || full_name.trim().length > 100)
-    return res.status(400).json({ error: 'Enter a full name (2–100 characters).' });
-  if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
-    return res.status(400).json({ error: 'Enter a valid email address.' });
-  if (typeof password !== 'string' || password.length < 8 || password.length > 200)
-    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const { rows } = await client.query(
-      `INSERT INTO users(full_name,email,password_hash) VALUES($1,$2,$3) RETURNING *`,
-      [full_name.trim(), email.trim().toLowerCase(), hashPassword(password)]
-    );
-    const user = rows[0];
-    const role = await client.query(`SELECT role_id FROM roles WHERE name='buyer'`);
-    await client.query(`INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)`, [user.user_id, role.rows[0].role_id]);
-    await client.query('COMMIT');
-    const token = newToken();
-    await pool.query(`INSERT INTO sessions(user_id,token_hash,expires_at) VALUES($1,$2,now()+interval '8 hours')`, [user.user_id, tokenHash(token)]);
-    res.cookie('owl_session', token, { httpOnly: true, sameSite: 'strict', maxAge: 8 * 3600000, path: '/' });
-    res.status(201).json({ user: { name: user.full_name, email: user.email, canSell: false } });
-  } catch (e) {
-    await client.query('ROLLBACK');
-    if (e.code === '23505') return res.status(409).json({ error: 'An account with this email already exists.' });
-    throw e;
-  } finally { client.release(); }
-});
-async function seller(req, res, next) {
-  const { rows } = await pool.query(`SELECT u.user_id,u.full_name,u.email FROM sessions s JOIN users u USING(user_id)
-    WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active' AND u.seller_status='active'
-    AND EXISTS(SELECT 1 FROM user_roles ur JOIN roles r USING(role_id) WHERE ur.user_id=u.user_id AND r.name='seller')`, [tokenHash(readToken(req))]);
-=======
 async function seller(req, res, next) {
   const { rows } = await pool.query(`SELECT u.user_id,u.full_name,u.email FROM sessions s JOIN users u USING(user_id)
     WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active' AND u.seller_status='active'
     AND u.is_seller`, [tokenHash(readToken(req))]);
->>>>>>> origin/backend-es2
   if (!rows.length) return res.status(401).json({ error: 'Please sign in with a seller account' });
   req.seller = rows[0]; next();
 }
@@ -93,16 +49,6 @@ async function account(req, res, next) {
   if (!rows.length) return res.status(401).json({ error: 'Please log in to continue' });
   req.seller = rows[0]; next();
 }
-<<<<<<< HEAD
-app.get('/api/me', account, (req, res) => res.json({ user: { name: req.seller.full_name, email: req.seller.email, canSell: req.seller.seller_status === 'active' } }));
-app.post('/api/logout', account, async (req, res) => { await pool.query('UPDATE sessions SET revoked_at=now() WHERE token_hash=$1', [tokenHash(readToken(req))]); res.clearCookie('owl_session', { path: '/' }); res.json({ ok: true }); });
-app.get('/api/seller/offers', seller, async (req, res) => {
-  const { rows } = await pool.query(`SELECT f.*,p.name,p.brand_name,c.name AS category,v.size,v.color,
-    e.position AS queue_position,(g.active_offer_id=f.offer_id) AS is_active,
-    coalesce((SELECT json_agg(a.file_reference ORDER BY a.sort_order,a.asset_id) FROM assets a WHERE a.offer_id=f.offer_id),'[]'::json) AS photos
-    FROM seller_offers f JOIN product_variants v USING(variant_id) JOIN products p USING(product_id)
-    JOIN categories c USING(category_id) LEFT JOIN queue_entries e USING(offer_id)
-=======
 mountBuyerRoutes(app, pool, account);
 app.get('/api/me', account, (req, res) => res.json({ user: { name: req.seller.full_name, email: req.seller.email, canSell: req.seller.seller_status === 'active' } }));
 app.post('/api/logout', account, async (req, res) => { await pool.query('UPDATE sessions SET revoked_at=now() WHERE token_hash=$1', [tokenHash(readToken(req))]); res.clearCookie('owl_session', { path: '/' }); res.json({ ok: true }); });
@@ -112,7 +58,6 @@ app.get('/api/seller/offers', seller, async (req, res) => {
     coalesce((SELECT json_agg(a.file_reference ORDER BY a.sort_order,a.asset_id) FROM assets a WHERE a.offer_id=f.offer_id),'[]'::json) AS photos
     FROM seller_offers f JOIN product_variants v USING(variant_id) JOIN products p USING(product_id)
     LEFT JOIN queue_entries e USING(offer_id)
->>>>>>> origin/backend-es2
     LEFT JOIN queue_groups g ON g.group_id=e.group_id WHERE f.seller_id=$1 ORDER BY f.created_at DESC,f.offer_id DESC`, [req.seller.user_id]);
   res.json({ offers: rows });
 });
@@ -142,19 +87,6 @@ app.get('/api/seller/sales', seller, async (req, res) => {
   const payouts = await pool.query('SELECT payout_id,amount,status,created_at FROM payouts WHERE seller_id=$1 ORDER BY payout_id DESC', [req.seller.user_id]);
   res.json({ sales: sales.rows, score: scores.rows[0] || null, payouts: payouts.rows });
 });
-<<<<<<< HEAD
-app.get('/api/settings', async (req, res) => { const { rows } = await pool.query('SELECT platform_fee_percent FROM platform_settings'); res.json(rows[0]); });
-app.get('/api/products/:id/market', async (req, res) => {
-  if (!/^[1-9][0-9]{0,17}$/.test(req.params.id)) return res.status(400).json({ error: 'Invalid product ID' });
-  const { rows } = await pool.query('SELECT * FROM public_market WHERE product_id=$1 ORDER BY variant_id,condition', [req.params.id]);
-  res.json({ listings: rows });
-});
-app.get('/api/addresses', account, async (req, res) => {
-  const { rows } = await pool.query('SELECT address_id,recipient_name,address_line,district,province,postal_code FROM addresses WHERE user_id=$1 AND NOT archived ORDER BY is_default DESC,address_id', [req.seller.user_id]); res.json({ addresses: rows });
-});
-app.post('/api/orders', account, async (req, res) => {
-  const b = req.body;
-=======
 app.get('/api/settings', async (req, res) => { const { rows } = await pool.query('SELECT platform_fee_percent FROM platform_configuration()'); res.json(rows[0]); });
 app.get('/api/products/:id/market', async (req, res) => {
   if (!/^[1-9][0-9]{0,17}$/.test(req.params.id)) return res.status(400).json({ error: 'Invalid product ID' });
@@ -184,15 +116,10 @@ app.post('/api/orders', account, async (req, res) => {
   if (b.couponCode != null && (typeof b.couponCode !== 'string' || couponCode.length > 40)) {
     return res.status(400).json({ error: 'Invalid coupon code' });
   }
->>>>>>> origin/backend-es2
   if (!/^[1-9][0-9]{0,17}$/.test(String(b.variantId)) || !/^[1-9][0-9]{0,17}$/.test(String(b.addressId)) || !['new', 'used'].includes(b.condition)) return res.status(400).json({ error: 'Select a size, condition and shipping address' });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-<<<<<<< HEAD
-    const { rows } = await client.query('SELECT checkout($1,$2,$3,$4,NULL) AS order_id', [req.seller.user_id, b.variantId, b.condition, b.addressId]);
-    const order = (await client.query('SELECT order_id,total,status FROM orders WHERE order_id=$1', [rows[0].order_id])).rows[0];
-=======
     let couponId = null;
     if (couponCode) {
       const { rows: coupons } = await client.query('SELECT coupon_id FROM coupons WHERE code=$1', [couponCode]);
@@ -212,7 +139,6 @@ app.post('/api/orders', account, async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'The listing price changed. Reopen the product to see the current price.' });
     }
->>>>>>> origin/backend-es2
     await client.query('COMMIT'); res.status(201).json({ order });
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 });
