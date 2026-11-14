@@ -17,6 +17,13 @@
     el.hidden = !msg;
   }
 
+  function setSuccess(panelId, msg) {
+    const el = $(panelId);
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = !msg;
+  }
+
   function setBusy(btnId, busy, idleLabel) {
     const btn = $(btnId);
     if (!btn) return;
@@ -71,10 +78,15 @@
     }
   }
 
-  function onLoginSuccess(user) {
+  function onLoginSuccess(user, successMessage = '') {
     window.currentUser = user;
     updateHeaderUser(user);
-    hideOverlay();
+    if (successMessage) {
+      setSuccess('register-success', successMessage);
+      setTimeout(hideOverlay, 1000);
+    } else {
+      hideOverlay();
+    }
     const filters = document.querySelector('.filters');
     if (filters) filters.removeAttribute('inert');
   }
@@ -97,6 +109,7 @@
       panelRegister.hidden = true;
       setError('login-error', '');
       setError('register-error', '');
+      setSuccess('register-success', '');
     });
 
     tabRegister.addEventListener('click', () => {
@@ -108,6 +121,7 @@
       panelLogin.hidden    = true;
       setError('login-error', '');
       setError('register-error', '');
+      setSuccess('register-success', '');
     });
   }
 
@@ -162,6 +176,7 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       setError('register-error', '');
+      setSuccess('register-success', '');
 
       const fullName  = ($('reg-name')     || {}).value?.trim() ?? '';
       const email     = ($('reg-email')    || {}).value?.trim() ?? '';
@@ -198,8 +213,8 @@
           return;
         }
 
-        // Auto-login after successful registration
-        onLoginSuccess(data.user || {});
+        // Auto-login after successful registration and briefly show confirmation.
+        onLoginSuccess(data.user || {}, 'Account created successfully. Signing you in…');
       } catch (_) {
         setError('register-error', 'Network error — check that the backend is running.');
       } finally {

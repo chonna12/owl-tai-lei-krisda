@@ -1,7 +1,7 @@
 import { mountBuyerRoutes } from './buyer.js';
 import express from 'express';
 import pg from 'pg';
-import { verifyPassword, newToken, tokenHash, readToken } from './security.js';
+import { hashPassword, verifyPassword, newToken, tokenHash, readToken } from './security.js';
 import { validatePhotos, savePhotos } from './photos.js';
 import { fileURLToPath } from 'node:url';
 
@@ -10,6 +10,20 @@ const pool = new pg.Pool({
   options: '-c search_path=owl,public',
   connectionTimeoutMillis: 5000,
 });
+const { rows: roleSchemaRows } = await pool.query(`
+  SELECT
+    EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='users' AND column_name='is_buyer') AS has_buyer_flag,
+    EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='products' AND column_name='category_id') AS has_category_id,
+    to_regclass('owl.roles') IS NOT NULL AND to_regclass('owl.user_roles') IS NOT NULL AS has_role_bridge
+`);
+const usesRoleBridge = !roleSchemaRows[0].has_buyer_flag && roleSchemaRows[0].has_role_bridge;
+const productCategory = roleSchemaRows[0].has_category_id ? 'c.name' : 'p.category';
+const productCatalogFrom = roleSchemaRows[0].has_category_id
+  ? 'products p JOIN categories c USING(category_id)'
+  : 'products p';
+const loginRoleFilter = usesRoleBridge
+  ? `EXISTS(SELECT 1 FROM user_roles ur JOIN roles r USING(role_id) WHERE ur.user_id=u.user_id AND r.name IN ('seller','buyer'))`
+  : '(u.is_seller OR u.is_buyer)';
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '9mb' }));
@@ -29,12 +43,59 @@ app.post('/api/login', async (req, res) => {
   attempt.count++;
   if (typeof req.body.email !== 'string' || typeof req.body.password !== 'string' || req.body.password.length > 200) return res.status(400).json({ error: 'Enter your email and password' });
   const { rows } = await pool.query(`SELECT u.* FROM users u WHERE email=$1 AND status='active'
-    AND (u.is_seller OR u.is_buyer)`, [req.body.email.trim().toLowerCase()]);
+    AND ${loginRoleFilter}`, [req.body.email.trim().toLowerCase()]);
   const user = rows[0];
   if (!user || !verifyPassword(req.body.password, user.password_hash)) return res.status(401).json({ error: 'Email or password is incorrect, or this account is not active.' });
   const token = newToken(); await pool.query("INSERT INTO sessions(user_id,token_hash,expires_at) VALUES($1,$2,now()+interval '8 hours')", [user.user_id, tokenHash(token)]);
   res.cookie('owl_session', token, { httpOnly: true, sameSite: 'strict', maxAge: 8 * 3600000, path: '/' });
   attempts.delete(key); res.json({ user: { name: user.full_name, email: user.email, canSell: user.seller_status === 'active' } });
+});
+app.post('/api/register', async (req, res) => {
+  const body = req.body || {};
+  const fullName = typeof body.full_name === 'string' ? body.full_name.trim() : '';
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+
+  if (!fullName || !email || !password) return res.status(400).json({ error: 'Full name, email and password are required.' });
+  if (fullName.length > 100) return res.status(400).json({ error: 'Full name must be 100 characters or fewer.' });
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  if (password.length > 200) return res.status(400).json({ error: 'Password must be 200 characters or fewer.' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(`
+      INSERT INTO users(full_name,email,password_hash)
+      VALUES($1,$2,$3)
+      ON CONFLICT(email) DO NOTHING
+      RETURNING user_id,full_name,email,seller_status
+    `, [fullName, email, hashPassword(password)]);
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'An account with this email already exists.' });
+    }
+
+    const user = rows[0];
+    if (usesRoleBridge) {
+      const role = await client.query(`
+        INSERT INTO user_roles(user_id,role_id)
+        SELECT $1,role_id FROM roles WHERE name='buyer'
+        ON CONFLICT DO NOTHING
+      `, [user.user_id]);
+      if (!role.rowCount) throw new Error('Buyer role is not configured');
+    }
+    const token = newToken();
+    await client.query("INSERT INTO sessions(user_id,token_hash,expires_at) VALUES($1,$2,now()+interval '8 hours')", [user.user_id, tokenHash(token)]);
+    await client.query('COMMIT');
+    res.cookie('owl_session', token, { httpOnly: true, sameSite: 'strict', maxAge: 8 * 3600000, path: '/' });
+    res.status(201).json({ user: { name: user.full_name, email: user.email, canSell: user.seller_status === 'active' } });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 });
 async function seller(req, res, next) {
   const { rows } = await pool.query(`SELECT u.user_id,u.full_name,u.email FROM sessions s JOIN users u USING(user_id)
@@ -154,19 +215,19 @@ app.get('/api/products', async (req, res) => {
     const escapedSearch = search.replace(/[!%_]/g, '!$&');
     values.push(`%${escapedSearch}%`);
     const parameter = `$${values.length}`;
-    filters.push(`(p.name ILIKE ${parameter} ESCAPE '!' OR p.brand_name ILIKE ${parameter} ESCAPE '!' OR p.category ILIKE ${parameter} ESCAPE '!')`);
+    filters.push(`(p.name ILIKE ${parameter} ESCAPE '!' OR p.brand_name ILIKE ${parameter} ESCAPE '!' OR ${productCategory} ILIKE ${parameter} ESCAPE '!')`);
   }
   if (category && category.toLowerCase() !== 'all categories') {
     values.push(category);
-    filters.push(`lower(p.category) = lower($${values.length})`);
+        filters.push(`lower(${productCategory}) = lower($${values.length})`);
   }
 
   const {rows} = await pool.query(`
     SELECT p.product_id, p.name, p.brand_name, p.description,
-           p.category,
+          ${productCategory} AS category,
            (SELECT a.file_reference FROM assets a
             WHERE a.product_id=p.product_id ORDER BY a.sort_order,a.asset_id LIMIT 1) AS image
-    FROM products p
+        FROM ${productCatalogFrom}
     WHERE ${filters.join(' AND ')} ORDER BY p.product_id
   `, values);
   res.json({ count: rows.length, products: rows });

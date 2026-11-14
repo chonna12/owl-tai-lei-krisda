@@ -1,36 +1,9 @@
 const $ = id => document.getElementById(id);
-const ICONS = { Shoes: 'icon-shoe', Clothing: 'icon-tee', Accessories: 'icon-bag' };
-let searchDebounce;
-let catalogController;
-let catalogRequestId = 0;
 
 async function getJson(url, options = {}) {
   const res = await fetch(url, options);
   if (!res.ok) throw new Error('Request failed');
   return res.json();
-}
-
-function svgIcon(id) {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('class', 'card-icon');
-  svg.setAttribute('viewBox', id === 'icon-shoe' ? '0 0 120 70' : '0 0 100 90');
-  svg.setAttribute('aria-hidden', 'true');
-  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-  use.setAttribute('href', '#' + id);
-  svg.append(use);
-  return svg;
-}
-
-function fillMedia(media, product) {
-  if (typeof product.image === 'string' && /^(data:image\/|https?:\/\/|\/)/.test(product.image)) {
-    const img = document.createElement('img');
-    img.className = 'card-photo';
-    img.src = product.image;
-    img.alt = product.name;
-    media.append(img);
-  } else {
-    media.append(svgIcon(ICONS[product.category] || 'icon-bag'));
-  }
 }
 
 // 1. Modal เลือก Sell / Buy
@@ -244,89 +217,3 @@ function showPendingResult() {
 
   $('done-btn').onclick = () => window.location.reload();
 }
-
-function makeCard(product) {
-  const li = document.createElement('li');
-  const card = document.createElement('button');
-  card.type = 'button';
-  card.className = 'card';
-  
-  card.onclick = () => showActionModal(product);
-
-  const media = document.createElement('div');
-  media.className = 'card-media tint-' + (product.product_id % 5);
-  const label = document.createElement('span');
-  label.className = 'card-label';
-  label.textContent = `${product.category} / ${String(product.product_id).padStart(3, '0')}`;
-  media.append(label);
-  fillMedia(media, product);
-
-  const body = document.createElement('div');
-  body.className = 'card-body';
-  const brand = document.createElement('span');
-  brand.className = 'card-brand';
-  brand.textContent = product.brand_name;
-  const name = document.createElement('span');
-  name.className = 'card-name';
-  name.textContent = product.name;
-  body.append(brand, name);
-
-  card.append(media, body);
-  li.append(card);
-  return li;
-}
-
-async function loadHome() {
-  const status = $('home-status');
-  if (!status) return;
-  const search = $('catalog-search')?.value.trim() || '';
-  const category = $('catalog-category')?.value || '';
-  const activeFilters = Boolean(search || category);
-  const params = new URLSearchParams();
-  if (search) params.set('q', search);
-  if (category) params.set('category', category);
-
-  const requestId = ++catalogRequestId;
-  catalogController?.abort();
-  const controller = new AbortController();
-  catalogController = controller;
-  status.textContent = 'Loading products…';
-  status.classList.remove('is-error');
-  $('clear-filters').hidden = !activeFilters;
-  try {
-    const query = params.toString();
-    const { products } = await getJson(`/api/products${query ? `?${query}` : ''}`, { signal: controller.signal });
-    if (requestId !== catalogRequestId) return;
-    $('product-grid').replaceChildren(...products.map(makeCard));
-    $('count').textContent = `${products.length} curated items`;
-    status.textContent = products.length ? '' : activeFilters ? 'No products match your search.' : 'No products yet.';
-  } catch (error) {
-    if (controller.signal.aborted || requestId !== catalogRequestId) return;
-    status.textContent = 'Could not load products. Check that the backend is running.';
-    status.classList.add('is-error');
-  } finally {
-    if (catalogController === controller) catalogController = null;
-  }
-}
-
-const searchInput = $('catalog-search');
-searchInput.addEventListener('input', () => {
-  clearTimeout(searchDebounce);
-  catalogRequestId += 1;
-  catalogController?.abort();
-  catalogController = null;
-  const status = $('home-status');
-  status.classList.remove('is-error');
-  status.textContent = 'Searching…';
-  searchDebounce = setTimeout(loadHome, 300);
-});
-
-$('catalog-category').addEventListener('change', loadHome);
-$('clear-filters').addEventListener('click', () => {
-  clearTimeout(searchDebounce);
-  searchInput.value = '';
-  $('catalog-category').value = '';
-  loadHome();
-});
-
-loadHome();
