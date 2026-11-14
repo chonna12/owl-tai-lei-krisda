@@ -1,4 +1,4 @@
--- Owl Pai Lei compact database: 31 tables. Install once in an EMPTY database.
+-- Owl Pai Lei compact database: 30 tables. Install once in an EMPTY database.
 BEGIN;
 
 -- 001_schema.sql
@@ -150,16 +150,6 @@ CREATE TABLE wishlist_items (
   product_id BIGINT NOT NULL REFERENCES products,
   added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY(user_id,product_id)
-);
-CREATE TABLE carts (
-  cart_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT NOT NULL UNIQUE REFERENCES users,
-  variant_id BIGINT REFERENCES product_variants,
-  condition VARCHAR(10) CHECK(condition IN ('new','used')),
-  quantity SMALLINT NOT NULL DEFAULT 1 CHECK(quantity=1),
-  added_at TIMESTAMPTZ,
-  CHECK ((variant_id IS NULL AND condition IS NULL AND added_at IS NULL) OR
-    (variant_id IS NOT NULL AND condition IS NOT NULL AND added_at IS NOT NULL))
 );
 -- PK(cart_id) deliberately limits each cart to one selected item.
 CREATE TABLE coupons (
@@ -959,12 +949,6 @@ BEGIN
 END; $$;
 CREATE TRIGGER queue_entry_guard BEFORE INSERT OR UPDATE ON queue_entries FOR EACH ROW EXECUTE FUNCTION check_queue_entry();
 
-CREATE FUNCTION set_cart_item(p_buyer BIGINT,p_variant BIGINT,p_condition TEXT) RETURNS VOID LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-BEGIN
- PERFORM require_role(p_buyer,'buyer');
- INSERT INTO carts(user_id,variant_id,condition,added_at) VALUES(p_buyer,p_variant,p_condition,now())
- ON CONFLICT(user_id) DO UPDATE SET variant_id=excluded.variant_id,condition=excluded.condition,added_at=now();
-END; $$;
 CREATE FUNCTION verify_seller(p_admin BIGINT,p_verification BIGINT,p_approve BOOLEAN,p_note TEXT) RETURNS VOID
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
@@ -1140,8 +1124,6 @@ BEGIN
   END LOOP;
  END LOOP;
 END; $$;
-INSERT INTO carts(user_id) VALUES(1),(2),(3);
-SELECT set_cart_item(3,3,'new');
 INSERT INTO wishlist_items(user_id,product_id) VALUES(3,1),(3,2);
 INSERT INTO coupons(code,discount_type,value,min_spend,starts_at,expires_at,usage_limit,created_by) VALUES
  ('OWL50','fixed',50,100,now()-interval '1 day',now()+interval '365 days',20,4),

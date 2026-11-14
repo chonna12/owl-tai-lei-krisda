@@ -1,7 +1,6 @@
 import { hashPassword } from './security.js';
 
 const isId = value => /^[1-9][0-9]{0,17}$/.test(String(value));
-const isCondition = value => ['new', 'used'].includes(value);
 const clean = value => typeof value === 'string' ? value.trim() : '';
 const fail = (res, status, error) => res.status(status).json({ error });
 const addressFields = {
@@ -124,34 +123,6 @@ export function mountBuyerRoutes(app, pool, account) {
     if (!isId(req.params.id)) return fail(res, 400, 'Invalid address ID');
     const result = await pool.query('UPDATE addresses SET archived=true WHERE user_id=$1 AND address_id=$2 AND NOT archived', [userId(req), req.params.id]);
     if (!result.rowCount) return fail(res, 404, 'Address not found');
-    res.json({ ok: true });
-  });
-
-  app.get('/api/cart', buyer, async (req, res) => {
-    const { rows } = await pool.query(`
-      SELECT c.variant_id,c.condition,c.quantity,p.product_id,p.name,v.size,v.color
-      FROM carts c JOIN product_variants v USING(variant_id) JOIN products p USING(product_id)
-      WHERE c.user_id=$1
-    `, [userId(req)]);
-    res.json({ item: rows[0] || null });
-  });
-
-  app.put('/api/cart', buyer, async (req, res) => {
-    const { variantId, condition, quantity = 1 } = req.body || {};
-    if (!isId(variantId) || !isCondition(condition) || quantity !== 1) {
-      return fail(res, 400, 'Select a variant, condition and quantity of one');
-    }
-    const { rowCount } = await pool.query(`
-      SELECT 1 FROM product_variants v JOIN products p USING(product_id)
-      WHERE v.variant_id=$1 AND v.active AND p.active
-    `, [variantId]);
-    if (!rowCount) return fail(res, 404, 'Variant not found');
-    await pool.query('SELECT set_cart_item($1,$2,$3)', [userId(req), variantId, condition]);
-    res.json({ ok: true });
-  });
-
-  app.delete('/api/cart', buyer, async (req, res) => {
-    await pool.query('DELETE FROM carts WHERE user_id=$1', [userId(req)]);
     res.json({ ok: true });
   });
 
