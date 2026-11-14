@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Owl Pai Lei</title>
-  <link rel="stylesheet" href="styles.css?v=login-8">
+  <link rel="stylesheet" href="styles.css?v=manage-1">
 </head>
 <body>
   <div class="page">
@@ -24,7 +24,23 @@
       <nav class="nav" aria-label="Main"><a class="nav-link" href="/" aria-current="page">Home</a></nav>
       <div class="user">
         <span id="demo-status" class="user-name">Owl Pai Lei</span>
-        <span class="avatar" aria-hidden="true">🦉</span>
+        <div class="profile-dropdown-wrapper" id="profile-dropdown-wrapper">
+          <span class="avatar" aria-hidden="true">🦉</span>
+          <div class="profile-dropdown-menu" id="profile-dropdown-menu" role="menu" aria-label="Profile options">
+            <button type="button" class="profile-menu-item" id="menu-your-product" role="menuitem">
+              <span class="profile-menu-icon" aria-hidden="true">🏷️</span>
+              <span class="profile-menu-label">Your product</span>
+            </button>
+            <button type="button" class="profile-menu-item" id="menu-your-wishlist" role="menuitem">
+              <span class="profile-menu-icon" aria-hidden="true">🤍</span>
+              <span class="profile-menu-label">Your wishlist</span>
+            </button>
+            <button type="button" class="profile-menu-item" id="menu-my-order" role="menuitem">
+              <span class="profile-menu-icon" aria-hidden="true">📦</span>
+              <span class="profile-menu-label">My order</span>
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -258,6 +274,185 @@
     </div>
   </template>
 
+  <!-- Your Wishlist -->
+  <template id="tpl-wishlist">
+    <div class="wl-page">
+      <header class="sf-header">
+        <a class="logo" href="/" aria-label="Owl Pai Lei home">
+          <svg class="owl" viewBox="0 0 60 56" aria-hidden="true">
+            <path d="M6 4 L20 12 H40 L54 4 V34 Q54 52 30 52 Q6 52 6 34 Z" fill="#8a5a3c"/>
+            <circle cx="20" cy="30" r="10" fill="#f6ece0"/><circle cx="40" cy="30" r="10" fill="#f6ece0"/>
+            <circle cx="20" cy="30" r="5"  fill="#8a5a3c"/><circle cx="40" cy="30" r="5"  fill="#8a5a3c"/>
+            <path d="M26 38 H34 L30 45 Z" fill="#e9c9a0"/>
+          </svg>
+          <span class="logo-text"><span class="logo-name">owl pai lei</span></span>
+        </a>
+        <button id="wl-back" class="sf-cancel-btn">← Back</button>
+      </header>
+      <div class="wl-container">
+        <div class="wl-header-bar">
+          <h2 class="mo-title">Your wishlist</h2>
+          <span id="wl-count-badge" class="wl-count-badge"></span>
+        </div>
+        <p class="catalog-sub" id="wl-sub">Items you've saved to your wishlist.</p>
+        <div id="wl-loading" class="mo-loading">Loading your wishlist…</div>
+        <ul id="wl-grid" class="grid"></ul>
+        <div id="wl-empty" class="wl-empty" hidden>
+          <span class="wl-empty-icon">🤍</span>
+          <h3 class="wl-empty-title">Your wishlist is empty</h3>
+          <p class="wl-empty-text">You haven't saved any items yet. Explore the catalog and click the heart icon on any product to save it here.</p>
+          <button id="wl-empty-explore" class="btn-primary" type="button">Explore catalog</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- Buy Page -->
+  <template id="tpl-buy">
+    <div class="bp-page">
+      <header class="sf-header">
+        <a class="logo" href="/" aria-label="Owl Pai Lei home">
+          <svg class="owl" viewBox="0 0 60 56" aria-hidden="true">
+            <path d="M6 4 L20 12 H40 L54 4 V34 Q54 52 30 52 Q6 52 6 34 Z" fill="#8a5a3c"/>
+            <circle cx="20" cy="30" r="10" fill="#f6ece0"/><circle cx="40" cy="30" r="10" fill="#f6ece0"/>
+            <circle cx="20" cy="30" r="5"  fill="#8a5a3c"/><circle cx="40" cy="30" r="5"  fill="#8a5a3c"/>
+            <path d="M26 38 H34 L30 45 Z" fill="#e9c9a0"/>
+          </svg>
+          <span class="logo-text"><span class="logo-name">owl pai lei</span></span>
+        </a>
+        <button id="bp-cancel" class="sf-cancel-btn">← Back</button>
+      </header>
+
+      <div class="sf-card bp-container">
+        <div class="sf-product-chip">
+          <div class="sf-chip-thumb" id="bp-chip-thumb"></div>
+          <div class="sf-chip-info">
+            <span class="sf-chip-name" id="bp-product-name"></span>
+            <span class="sf-chip-brand" id="bp-product-brand"></span>
+          </div>
+        </div>
+
+        <div class="sf-divider"></div>
+
+        <p class="sf-section-label">Condition</p>
+        <div class="sf-tabs">
+          <button type="button" id="tab-buy-new"  class="sf-tab sf-tab-active">✨ One hand</button>
+          <button type="button" id="tab-buy-used" class="sf-tab">🔄 Second hand</button>
+        </div>
+
+        <div class="bp-queue-header">
+          <span class="bp-queue-title">Seller Listings</span>
+          <span class="bp-queue-hint">Sorted by queue (first listed on top)</span>
+        </div>
+
+        <div id="bp-listings-container" class="bp-listings-container">
+          <div class="mo-loading">Loading seller listings…</div>
+        </div>
+
+        <div id="bp-listings-empty" class="mo-empty bp-empty-box" hidden>
+          <span class="bp-empty-icon">🏷️</span>
+          <p class="bp-empty-title" id="bp-empty-title">No listings yet</p>
+          <p class="bp-empty-sub">Be the first seller to list this item!</p>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- Order Confirmation (Pay or Cancel) -->
+  <template id="tpl-order-confirmation">
+    <div class="bp-page">
+      <header class="sf-header">
+        <a class="logo" href="/" aria-label="Owl Pai Lei home">
+          <svg class="owl" viewBox="0 0 60 56" aria-hidden="true">
+            <path d="M6 4 L20 12 H40 L54 4 V34 Q54 52 30 52 Q6 52 6 34 Z" fill="#8a5a3c"/>
+            <circle cx="20" cy="30" r="10" fill="#f6ece0"/><circle cx="40" cy="30" r="10" fill="#f6ece0"/>
+            <circle cx="20" cy="30" r="5"  fill="#8a5a3c"/><circle cx="40" cy="30" r="5"  fill="#8a5a3c"/>
+            <path d="M26 38 H34 L30 45 Z" fill="#e9c9a0"/>
+          </svg>
+          <span class="logo-text"><span class="logo-name">owl pai lei</span></span>
+        </a>
+        <button id="bp-order-back" class="sf-cancel-btn">Back to catalog</button>
+      </header>
+
+      <div class="sf-card bp-order-card">
+        <div class="bp-order-icon" aria-hidden="true">🛍️</div>
+        <h2 class="bp-order-title">Order Placed</h2>
+        <p class="bp-order-subtitle" id="bp-order-number"></p>
+
+        <div class="bp-order-summary-box">
+          <div class="sf-product-chip bp-order-chip">
+            <div class="sf-chip-thumb" id="bp-order-thumb"></div>
+            <div class="sf-chip-info">
+              <span class="sf-chip-name" id="bp-order-product-name"></span>
+              <span class="sf-chip-brand" id="bp-order-product-meta"></span>
+              <span class="bp-order-condition" id="bp-order-condition"></span>
+            </div>
+          </div>
+
+          <div class="bp-order-total-row">
+            <span>Total Price</span>
+            <span class="bp-order-total-price" id="bp-order-price"></span>
+          </div>
+        </div>
+
+        <div id="bp-status-box" class="bp-status-container">
+          <span class="bp-status-badge bp-status-pending">⏳ Pending payment</span>
+        </div>
+
+        <!-- Pay or Cancel buttons -->
+        <div id="bp-actions" class="bp-order-actions">
+          <button type="button" id="btn-order-pay" class="bp-btn bp-btn-pay">
+            💳 Pay
+          </button>
+          <button type="button" id="btn-order-cancel" class="bp-btn bp-btn-cancel">
+            ✕ Cancel
+          </button>
+        </div>
+
+        <!-- Post-action buttons after Pay or Cancel -->
+        <div id="bp-post-actions" class="bp-order-post-actions" hidden>
+          <button type="button" id="btn-go-my-orders" class="bp-btn bp-btn-primary">
+            📦 View My Orders
+          </button>
+          <button type="button" id="btn-go-home" class="bp-btn bp-btn-outline">
+            Back to Catalog
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- My Orders Page (Buyer) -->
+  <template id="tpl-buyer-orders">
+    <div class="mo-page">
+      <header class="sf-header">
+        <a class="logo" href="/" aria-label="Owl Pai Lei home">
+          <svg class="owl" viewBox="0 0 60 56" aria-hidden="true">
+            <path d="M6 4 L20 12 H40 L54 4 V34 Q54 52 30 52 Q6 52 6 34 Z" fill="#8a5a3c"/>
+            <circle cx="20" cy="30" r="10" fill="#f6ece0"/><circle cx="40" cy="30" r="10" fill="#f6ece0"/>
+            <circle cx="20" cy="30" r="5"  fill="#8a5a3c"/><circle cx="40" cy="30" r="5"  fill="#8a5a3c"/>
+            <path d="M26 38 H34 L30 45 Z" fill="#e9c9a0"/>
+          </svg>
+          <span class="logo-text"><span class="logo-name">owl pai lei</span></span>
+        </a>
+        <button id="bo-back" class="sf-cancel-btn">← Back</button>
+      </header>
+      <div class="mo-container">
+        <h2 class="mo-title">My order</h2>
+        <p class="catalog-sub" style="margin-top:-14px;margin-bottom:20px;">Products you have ordered.</p>
+        <div id="bo-list" class="mo-list">
+          <div class="mo-loading">Loading your orders…</div>
+        </div>
+        <div id="bo-empty" class="mo-empty" hidden>
+          <span class="bp-empty-icon">📦</span>
+          <p class="bp-empty-title">You have no orders yet</p>
+          <p class="bp-empty-sub">Browse our catalog and buy pieces you love.</p>
+          <button id="bo-empty-explore" class="btn-primary" type="button">Explore catalog</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
   <!-- ══════════════════════════════════════════════════════════
        LOGIN / REGISTER OVERLAY  — controlled by login.js
   ══════════════════════════════════════════════════════════ -->
@@ -348,5 +543,7 @@
   <script src="login.js?v=login-8"></script>
   <script src="approve.js?v=login-8"></script>
   <script src="catalog.js?v=catalog-1"></script>
+  <script src="manage.js?v=manage-1"></script>
+  <script src="buy.js?v=buy-1"></script>
 </body>
 </html>
