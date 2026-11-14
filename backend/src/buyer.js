@@ -48,13 +48,10 @@ export function mountBuyerRoutes(app, pool, account) {
     }
     try {
       const user = await transaction(pool, async client => {
-        const { rows: roles } = await client.query("SELECT role_id FROM roles WHERE name='buyer'");
-        if (!roles.length) throw new Error('Buyer role has not been seeded');
         const { rows } = await client.query(
           'INSERT INTO users(full_name,email,password_hash) VALUES($1,$2,$3) RETURNING user_id,full_name,email',
           [fullName, email, hashPassword(password)]
         );
-        await client.query('INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)', [rows[0].user_id, roles[0].role_id]);
         return rows[0];
       });
       res.status(201).json({ user: { id: user.user_id, name: user.full_name, email: user.email, canSell: false } });
@@ -128,12 +125,11 @@ export function mountBuyerRoutes(app, pool, account) {
 
   app.get('/api/orders', buyer, async (req, res) => {
     const { rows } = await pool.query(`
-      SELECT b.*,c.request_id AS cancellation_request_id,c.status AS cancellation_status,
+      SELECT b.*,CASE WHEN o.cancellation_status IS NOT NULL THEN o.order_id END AS cancellation_request_id,o.cancellation_status,
              s.tracking_number,s.carrier,s.status AS shipment_status
-      FROM buyer_orders b
+      FROM buyer_orders b JOIN orders o USING(order_id)
       LEFT JOIN order_items i USING(order_id)
       LEFT JOIN shipments s ON s.order_item_id=i.order_item_id AND s.leg='hub_to_buyer'
-      LEFT JOIN cancellation_requests c ON c.order_id=b.order_id AND c.buyer_id=b.buyer_id
       WHERE b.buyer_id=$1 ORDER BY b.order_id DESC
     `, [userId(req)]);
     res.json({ orders: rows, demoPayment: process.env.DEMO_PAYMENT === 'true' });

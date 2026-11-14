@@ -29,7 +29,7 @@ app.post('/api/login', async (req, res) => {
   attempt.count++;
   if (typeof req.body.email !== 'string' || typeof req.body.password !== 'string' || req.body.password.length > 200) return res.status(400).json({ error: 'Enter your email and password' });
   const { rows } = await pool.query(`SELECT u.* FROM users u WHERE email=$1 AND status='active'
-    AND EXISTS(SELECT 1 FROM user_roles ur JOIN roles r USING(role_id) WHERE ur.user_id=u.user_id AND r.name IN ('seller','buyer'))`, [req.body.email.trim().toLowerCase()]);
+    AND (u.is_seller OR u.is_buyer)`, [req.body.email.trim().toLowerCase()]);
   const user = rows[0];
   if (!user || !verifyPassword(req.body.password, user.password_hash)) return res.status(401).json({ error: 'Email or password is incorrect, or this account is not active.' });
   const token = newToken(); await pool.query("INSERT INTO sessions(user_id,token_hash,expires_at) VALUES($1,$2,now()+interval '8 hours')", [user.user_id, tokenHash(token)]);
@@ -39,7 +39,7 @@ app.post('/api/login', async (req, res) => {
 async function seller(req, res, next) {
   const { rows } = await pool.query(`SELECT u.user_id,u.full_name,u.email FROM sessions s JOIN users u USING(user_id)
     WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active' AND u.seller_status='active'
-    AND EXISTS(SELECT 1 FROM user_roles ur JOIN roles r USING(role_id) WHERE ur.user_id=u.user_id AND r.name='seller')`, [tokenHash(readToken(req))]);
+    AND u.is_seller`, [tokenHash(readToken(req))]);
   if (!rows.length) return res.status(401).json({ error: 'Please sign in with a seller account' });
   req.seller = rows[0]; next();
 }
@@ -53,11 +53,11 @@ mountBuyerRoutes(app, pool, account);
 app.get('/api/me', account, (req, res) => res.json({ user: { name: req.seller.full_name, email: req.seller.email, canSell: req.seller.seller_status === 'active' } }));
 app.post('/api/logout', account, async (req, res) => { await pool.query('UPDATE sessions SET revoked_at=now() WHERE token_hash=$1', [tokenHash(readToken(req))]); res.clearCookie('owl_session', { path: '/' }); res.json({ ok: true }); });
 app.get('/api/seller/offers', seller, async (req, res) => {
-  const { rows } = await pool.query(`SELECT f.*,p.name,p.brand_name,c.name AS category,v.size,v.color,
+  const { rows } = await pool.query(`SELECT f.*,p.name,p.brand_name,p.category,v.size,v.color,
     e.position AS queue_position,(g.active_offer_id=f.offer_id) AS is_active,
     coalesce((SELECT json_agg(a.file_reference ORDER BY a.sort_order,a.asset_id) FROM assets a WHERE a.offer_id=f.offer_id),'[]'::json) AS photos
     FROM seller_offers f JOIN product_variants v USING(variant_id) JOIN products p USING(product_id)
-    JOIN categories c USING(category_id) LEFT JOIN queue_entries e USING(offer_id)
+    LEFT JOIN queue_entries e USING(offer_id)
     LEFT JOIN queue_groups g ON g.group_id=e.group_id WHERE f.seller_id=$1 ORDER BY f.created_at DESC,f.offer_id DESC`, [req.seller.user_id]);
   res.json({ offers: rows });
 });
@@ -87,7 +87,7 @@ app.get('/api/seller/sales', seller, async (req, res) => {
   const payouts = await pool.query('SELECT payout_id,amount,status,created_at FROM payouts WHERE seller_id=$1 ORDER BY payout_id DESC', [req.seller.user_id]);
   res.json({ sales: sales.rows, score: scores.rows[0] || null, payouts: payouts.rows });
 });
-app.get('/api/settings', async (req, res) => { const { rows } = await pool.query('SELECT platform_fee_percent FROM platform_settings'); res.json(rows[0]); });
+app.get('/api/settings', async (req, res) => { const { rows } = await pool.query('SELECT platform_fee_percent FROM platform_configuration()'); res.json(rows[0]); });
 app.get('/api/products/:id/market', async (req, res) => {
   if (!/^[1-9][0-9]{0,17}$/.test(req.params.id)) return res.status(400).json({ error: 'Invalid product ID' });
   await pool.query(`
@@ -147,10 +147,10 @@ app.post('/api/orders', account, async (req, res) => {
 app.get('/api/products', async (req, res) => {
   const { rows } = await pool.query(`
     SELECT p.product_id, p.name, p.brand_name, p.description,
-           c.name AS category,
+           p.category,
            (SELECT a.file_reference FROM assets a
             WHERE a.product_id=p.product_id ORDER BY a.sort_order,a.asset_id LIMIT 1) AS image
-    FROM products p JOIN categories c USING(category_id)
+    FROM products p
     WHERE p.active ORDER BY p.product_id
   `);
   res.json({ count: rows.length, products: rows });

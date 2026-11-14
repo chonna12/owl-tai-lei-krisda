@@ -1,3 +1,4 @@
+-- For the consolidated 23-table schema only. Older databases must run consolidate-23.sql first.
 BEGIN;
 
 SET LOCAL search_path TO owl, public;
@@ -45,7 +46,7 @@ END; $$;
 
 CREATE OR REPLACE FUNCTION checkout_selected(p_buyer BIGINT,p_variant BIGINT,p_condition TEXT,p_address BIGINT,p_coupon BIGINT,p_offer BIGINT) RETURNS BIGINT
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE g BIGINT; v_offer BIGINT; f seller_offers; a addresses; cfg platform_settings; v_fee NUMERIC; v_discount NUMERIC; v_order BIGINT; v_product RECORD;
+DECLARE g BIGINT; v_offer BIGINT; f seller_offers; a addresses; cfg RECORD; v_fee NUMERIC; v_discount NUMERIC; v_order BIGINT; v_product RECORD;
 BEGIN
  PERFORM require_role(p_buyer,'buyer');
  SELECT * INTO a FROM addresses WHERE address_id=p_address AND user_id=p_buyer AND NOT archived;
@@ -62,7 +63,7 @@ BEGIN
   SELECT * INTO f FROM seller_offers WHERE offer_id=v_offer;
  END IF;
  IF f.seller_id=p_buyer THEN RAISE EXCEPTION 'Cannot buy own item'; END IF;
- SELECT * INTO cfg FROM platform_settings WHERE settings_id=1;
+ SELECT * INTO cfg FROM platform_configuration();
  v_fee:=round(f.asking_price*cfg.platform_fee_percent/100,2);
  v_discount:=discount_for(p_coupon,p_buyer,f.asking_price+v_fee);
  SELECT p.name,v.size,v.color INTO v_product FROM product_variants v JOIN products p USING(product_id)
@@ -125,19 +126,19 @@ END; $$;
 
 CREATE OR REPLACE FUNCTION review_cancellation(p_admin BIGINT,p_request BIGINT,p_approve BOOLEAN) RETURNS VOID
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE r cancellation_requests; o orders; i order_items; f seller_offers; g BIGINT; paid payments;
+DECLARE r orders; o orders; i order_items; f seller_offers; g BIGINT; paid payments;
 BEGIN
  PERFORM require_role(p_admin,'admin');
- SELECT * INTO r FROM cancellation_requests WHERE request_id=p_request;
+ SELECT * INTO r FROM orders WHERE order_id=p_request;
  IF NOT FOUND THEN RAISE EXCEPTION 'Request not found'; END IF;
  SELECT * INTO i FROM order_items WHERE order_id=r.order_id;
  IF i.condition_snapshot='new' THEN g:=ensure_group(i.variant_id,i.condition_snapshot); END IF;
- SELECT * INTO r FROM cancellation_requests WHERE request_id=p_request FOR UPDATE;
+ SELECT * INTO r FROM orders WHERE order_id=p_request FOR UPDATE;
  SELECT * INTO o FROM orders WHERE order_id=r.order_id FOR UPDATE;
  SELECT * INTO i FROM order_items WHERE order_id=r.order_id FOR UPDATE;
- IF r.status<>'pending' THEN RAISE EXCEPTION 'Request already reviewed'; END IF;
+ IF r.cancellation_status IS DISTINCT FROM 'pending' THEN RAISE EXCEPTION 'Request already reviewed'; END IF;
  IF p_approve AND i.fulfillment_status NOT IN ('awaiting_payment','awaiting_seller_shipment') THEN RAISE EXCEPTION 'Seller already handed over item'; END IF;
- UPDATE cancellation_requests SET status=CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,reviewed_by=p_admin,reviewed_at=now() WHERE request_id=p_request;
+ UPDATE orders SET cancellation_status=CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,cancellation_reviewed_by=p_admin,cancellation_reviewed_at=now() WHERE order_id=p_request;
  IF NOT p_approve THEN RETURN; END IF;
  SELECT * INTO paid FROM payments WHERE order_id=r.order_id AND status='captured';
  IF FOUND THEN
@@ -156,14 +157,14 @@ BEGIN
 END; $$;
 
 CREATE OR REPLACE VIEW public_market AS
-SELECT p.product_id,p.name AS product_name,p.brand_name AS brand,c.name AS category,
+SELECT p.product_id,p.name AS product_name,p.brand_name AS brand,p.category,
  v.variant_id,v.size,v.color,f.condition,'Owl Pai Lei'::TEXT AS sold_by,
  round(f.asking_price*(1+cfg.platform_fee_percent/100),2) AS display_price,
  cfg.shipping_fee,f.condition_notes,f.defects,
  g.active_since+interval '24 hours' AS turn_expires_at,f.offer_id
 FROM seller_offers f
 JOIN product_variants v ON v.variant_id=f.variant_id JOIN products p USING(product_id)
-JOIN categories c USING(category_id) CROSS JOIN platform_settings cfg
+CROSS JOIN platform_configuration() cfg
 LEFT JOIN queue_groups g ON f.condition='new' AND g.active_offer_id=f.offer_id
 WHERE (f.condition='used' OR g.active_offer_id IS NOT NULL)
  AND f.status='approved' AND f.available_quantity>0 AND p.active AND v.active;

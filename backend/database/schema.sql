@@ -1,4 +1,4 @@
--- Owl Pai Lei compact database: 30 tables. Install once in an EMPTY database.
+-- Owl Pai Lei compact database: 23 tables. Install once in an EMPTY database.
 BEGIN;
 
 -- 001_schema.sql
@@ -16,20 +16,32 @@ CREATE TABLE users (
   password_hash TEXT NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK(status IN ('active','suspended','closed')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  is_buyer BOOLEAN NOT NULL DEFAULT true,
+  is_seller BOOLEAN NOT NULL DEFAULT false,
+  is_admin BOOLEAN NOT NULL DEFAULT false,
+  is_qc BOOLEAN NOT NULL DEFAULT false,
+  bank_name VARCHAR(100),
+  account_holder VARCHAR(100),
+  account_number VARCHAR(50),
+  bank_verified BOOLEAN NOT NULL DEFAULT false,
+  bank_archived BOOLEAN NOT NULL DEFAULT false,
+  id_document_reference TEXT,
+  bank_document_reference TEXT,
+  verification_status VARCHAR(20) CHECK(verification_status IN ('pending','approved','rejected')),
+  verification_reviewer_id BIGINT REFERENCES users,
+  verification_review_note TEXT,
+  verification_submitted_at TIMESTAMPTZ,
+  verification_reviewed_at TIMESTAMPTZ,
+  CHECK (NOT bank_verified OR (bank_name IS NOT NULL AND account_holder IS NOT NULL AND account_number IS NOT NULL)),
+  CHECK (verification_status IS NULL OR
+    (id_document_reference IS NOT NULL AND bank_document_reference IS NOT NULL AND verification_submitted_at IS NOT NULL
+      AND ((verification_status='pending' AND verification_reviewer_id IS NULL AND verification_reviewed_at IS NULL)
+        OR (verification_status<>'pending' AND verification_reviewer_id IS NOT NULL AND verification_reviewed_at IS NOT NULL)))),
   seller_display_name VARCHAR(100),
   seller_status VARCHAR(20) CHECK(seller_status IN ('active','suspended')),
   seller_since TIMESTAMPTZ,
   CHECK ((seller_display_name IS NULL AND seller_status IS NULL AND seller_since IS NULL) OR
     (seller_display_name IS NOT NULL AND seller_status IS NOT NULL AND seller_since IS NOT NULL))
-);
-CREATE TABLE roles (
-  role_id SMALLINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  name VARCHAR(20) NOT NULL UNIQUE CHECK(name IN ('buyer','seller','admin','qc'))
-);
-CREATE TABLE user_roles (
-  user_id BIGINT NOT NULL REFERENCES users,
-  role_id SMALLINT NOT NULL REFERENCES roles,
-  PRIMARY KEY(user_id,role_id)
 );
 CREATE TABLE sessions (
   session_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -51,36 +63,10 @@ CREATE TABLE addresses (
   archived BOOLEAN NOT NULL DEFAULT false
 );
 CREATE UNIQUE INDEX one_default_address ON addresses(user_id) WHERE is_default AND NOT archived;
-CREATE TABLE seller_bank_accounts (
-  bank_account_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  seller_id BIGINT NOT NULL REFERENCES users(user_id),
-  bank_name VARCHAR(100) NOT NULL,
-  account_holder VARCHAR(100) NOT NULL,
-  account_number VARCHAR(50) NOT NULL,
-  is_verified BOOLEAN NOT NULL DEFAULT false,
-  archived BOOLEAN NOT NULL DEFAULT false
-);
-CREATE TABLE seller_verifications (
-  verification_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  seller_id BIGINT NOT NULL REFERENCES users(user_id),
-  id_document_reference TEXT NOT NULL,
-  bank_document_reference TEXT NOT NULL,
-  status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
-  reviewer_id BIGINT REFERENCES users,
-  review_note TEXT,
-  submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  reviewed_at TIMESTAMPTZ,
-  CHECK ((status='pending' AND reviewer_id IS NULL AND reviewed_at IS NULL)
-    OR (status<>'pending' AND reviewer_id IS NOT NULL AND reviewed_at IS NOT NULL))
-);
 
-CREATE TABLE categories (
-  category_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  name VARCHAR(100) NOT NULL UNIQUE
-);
 CREATE TABLE products (
   product_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  category_id BIGINT NOT NULL REFERENCES categories,
+  category VARCHAR(100) NOT NULL CHECK(length(trim(category))>0),
   brand_name VARCHAR(100) NOT NULL,
   name VARCHAR(150) NOT NULL UNIQUE,
   description TEXT NOT NULL DEFAULT '',
@@ -96,14 +82,6 @@ CREATE TABLE product_variants (
   sku VARCHAR(80) NOT NULL UNIQUE,
   active BOOLEAN NOT NULL DEFAULT true,
   UNIQUE(product_id,size,color)
-);
-CREATE TABLE platform_settings (
-  migration_reference_data JSONB NOT NULL DEFAULT '{}',
-  settings_id SMALLINT PRIMARY KEY CHECK(settings_id=1),
-  platform_fee_percent NUMERIC(5,2) NOT NULL CHECK(platform_fee_percent BETWEEN 0 AND 100),
-  shipping_fee NUMERIC(12,2) NOT NULL CHECK(shipping_fee>=0),
-  active_turn_hours SMALLINT NOT NULL DEFAULT 24 CHECK(active_turn_hours=24),
-  note TEXT NOT NULL
 );
 
 CREATE TABLE seller_offers (
@@ -151,7 +129,6 @@ CREATE TABLE wishlist_items (
   added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY(user_id,product_id)
 );
--- PK(cart_id) deliberately limits each cart to one selected item.
 CREATE TABLE coupons (
   coupon_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   code VARCHAR(40) NOT NULL UNIQUE,
@@ -179,6 +156,16 @@ CREATE TABLE orders (
   total NUMERIC(12,2) NOT NULL CHECK(total>=0),
   coupon_id BIGINT REFERENCES coupons,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  cancellation_reason TEXT,
+  cancellation_status VARCHAR(20) CHECK(cancellation_status IN ('pending','approved','rejected')),
+  cancellation_reviewed_by BIGINT REFERENCES users,
+  cancellation_reviewed_at TIMESTAMPTZ,
+  cancellation_created_at TIMESTAMPTZ,
+  CHECK ((cancellation_status IS NULL AND cancellation_reason IS NULL AND cancellation_created_at IS NULL
+      AND cancellation_reviewed_by IS NULL AND cancellation_reviewed_at IS NULL)
+    OR (cancellation_status IS NOT NULL AND length(trim(cancellation_reason))>0 AND cancellation_created_at IS NOT NULL
+      AND ((cancellation_status='pending' AND cancellation_reviewed_by IS NULL AND cancellation_reviewed_at IS NULL)
+        OR (cancellation_status<>'pending' AND cancellation_reviewed_by IS NOT NULL AND cancellation_reviewed_at IS NOT NULL)))),
   completed_at TIMESTAMPTZ,
   shipping_recipient_name VARCHAR(100),
   shipping_phone VARCHAR(30),
@@ -231,16 +218,6 @@ CREATE TABLE payments (
   CHECK(status<>'captured' OR verified_by IS NOT NULL)
 );
 CREATE UNIQUE INDEX one_captured_payment ON payments(order_id) WHERE status='captured';
-CREATE TABLE cancellation_requests (
-  request_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  order_id BIGINT NOT NULL UNIQUE REFERENCES orders,
-  buyer_id BIGINT NOT NULL REFERENCES users,
-  reason TEXT NOT NULL CHECK(length(trim(reason))>0),
-  status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
-  reviewed_by BIGINT REFERENCES users,
-  reviewed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
 
 CREATE TABLE qc_inspections (
   inspection_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -298,7 +275,7 @@ CREATE TABLE seller_charges (
 CREATE TABLE payouts (
   payout_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   seller_id BIGINT NOT NULL REFERENCES users(user_id),
-  bank_account_id BIGINT NOT NULL REFERENCES seller_bank_accounts,
+  bank_account_id BIGINT NOT NULL REFERENCES users(user_id) CHECK(bank_account_id=seller_id),
   bank_name_snapshot VARCHAR(100) NOT NULL,
   account_holder_snapshot VARCHAR(100) NOT NULL,
   account_number_snapshot VARCHAR(50) NOT NULL,
@@ -363,7 +340,7 @@ CREATE TABLE activity_logs (
  offer_id BIGINT REFERENCES seller_offers,
  refund_id BIGINT REFERENCES refunds,
  payout_id BIGINT REFERENCES payouts,
- verification_id BIGINT REFERENCES seller_verifications,
+ verification_id BIGINT REFERENCES users(user_id),
  charge_id BIGINT REFERENCES seller_charges,
  status VARCHAR(40),
  location VARCHAR(150),
@@ -389,10 +366,18 @@ CREATE INDEX activity_actor_idx ON activity_logs(actor_id,created_at);
 
 SET search_path TO owl, public;
 
+CREATE FUNCTION platform_configuration() RETURNS TABLE(
+ platform_fee_percent NUMERIC,shipping_fee NUMERIC,active_turn_hours SMALLINT)
+LANGUAGE sql IMMUTABLE AS $$
+ SELECT 10.00::NUMERIC,50.00::NUMERIC,24::SMALLINT;
+$$;
+
 CREATE FUNCTION has_role(p_user BIGINT,p_role TEXT) RETURNS BOOLEAN
 LANGUAGE sql STABLE SET search_path=owl,pg_temp AS $$
- SELECT EXISTS(SELECT 1 FROM user_roles ur JOIN roles r USING(role_id) JOIN users u USING(user_id)
- WHERE ur.user_id=p_user AND r.name=p_role AND u.status='active');
+ SELECT coalesce((SELECT status='active' AND CASE p_role
+ WHEN 'buyer' THEN is_buyer WHEN 'seller' THEN is_seller
+ WHEN 'admin' THEN is_admin WHEN 'qc' THEN is_qc ELSE false END
+ FROM users WHERE user_id=p_user),false);
 $$;
 CREATE FUNCTION require_role(p_user BIGINT,p_role TEXT) RETURNS VOID
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
@@ -572,7 +557,7 @@ END; $$;
 
 CREATE FUNCTION checkout_selected(p_buyer BIGINT,p_variant BIGINT,p_condition TEXT,p_address BIGINT,p_coupon BIGINT,p_offer BIGINT) RETURNS BIGINT
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE g BIGINT; v_offer BIGINT; f seller_offers; a addresses; cfg platform_settings; v_fee NUMERIC; v_discount NUMERIC; v_order BIGINT; v_product RECORD;
+DECLARE g BIGINT; v_offer BIGINT; f seller_offers; a addresses; cfg RECORD; v_fee NUMERIC; v_discount NUMERIC; v_order BIGINT; v_product RECORD;
 BEGIN
  PERFORM require_role(p_buyer,'buyer');
  SELECT * INTO a FROM addresses WHERE address_id=p_address AND user_id=p_buyer AND NOT archived;
@@ -589,7 +574,7 @@ BEGIN
   SELECT * INTO f FROM seller_offers WHERE offer_id=v_offer;
  END IF;
  IF f.seller_id=p_buyer THEN RAISE EXCEPTION 'Cannot buy own item'; END IF;
- SELECT * INTO cfg FROM platform_settings WHERE settings_id=1;
+ SELECT * INTO cfg FROM platform_configuration();
  v_fee:=round(f.asking_price*cfg.platform_fee_percent/100,2);
  v_discount:=discount_for(p_coupon,p_buyer,f.asking_price+v_fee);
  SELECT p.name,v.size,v.color INTO v_product FROM product_variants v JOIN products p USING(product_id)
@@ -775,12 +760,12 @@ BEGIN
 END; $$;
 
 CREATE FUNCTION create_payout(p_admin BIGINT,p_seller BIGINT,p_bank BIGINT) RETURNS BIGINT LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE b seller_bank_accounts; v_payout BIGINT; v_total NUMERIC; ids BIGINT[];
+DECLARE b users; v_payout BIGINT; v_total NUMERIC; ids BIGINT[];
 BEGIN
  PERFORM require_role(p_admin,'admin');
  -- Serialize settlement batches for the same seller.
  PERFORM 1 FROM users WHERE user_id=p_seller AND seller_status IS NOT NULL FOR UPDATE;
- SELECT * INTO b FROM seller_bank_accounts WHERE bank_account_id=p_bank AND seller_id=p_seller AND is_verified AND NOT archived;
+ SELECT * INTO b FROM users WHERE user_id=p_bank AND user_id=p_seller AND bank_verified AND NOT bank_archived;
  IF NOT FOUND THEN RAISE EXCEPTION 'Verified bank account owned by seller required'; END IF;
  SELECT array_agg(i.order_item_id),sum(i.unit_price) INTO ids,v_total FROM order_items i JOIN orders o USING(order_id)
  WHERE i.seller_id=p_seller AND o.status='completed' AND i.fulfillment_status='completed'
@@ -867,7 +852,7 @@ CREATE TRIGGER refund_guard BEFORE INSERT OR UPDATE ON refunds FOR EACH ROW EXEC
 CREATE FUNCTION check_payout_record() RETURNS trigger LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  PERFORM require_role(NEW.created_by,'admin');
- IF NOT EXISTS(SELECT 1 FROM seller_bank_accounts WHERE bank_account_id=NEW.bank_account_id AND seller_id=NEW.seller_id AND is_verified AND NOT archived)
+ IF NOT EXISTS(SELECT 1 FROM users WHERE user_id=NEW.bank_account_id AND user_id=NEW.seller_id AND bank_verified AND NOT bank_archived)
  THEN RAISE EXCEPTION 'Payout bank account does not belong to seller or is not verified'; END IF;
  IF TG_OP='UPDATE' THEN
   IF ROW(NEW.seller_id,NEW.bank_account_id,NEW.amount,NEW.bank_name_snapshot,NEW.account_holder_snapshot,NEW.account_number_snapshot)
@@ -953,10 +938,10 @@ CREATE FUNCTION verify_seller(p_admin BIGINT,p_verification BIGINT,p_approve BOO
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
 BEGIN
  PERFORM require_role(p_admin,'admin');
- PERFORM 1 FROM seller_verifications WHERE verification_id=p_verification AND status='pending' FOR UPDATE;
+ PERFORM 1 FROM users WHERE user_id=p_verification AND verification_status='pending' FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Pending verification required'; END IF;
- UPDATE seller_verifications SET status=CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,
- reviewer_id=p_admin,review_note=p_note,reviewed_at=now() WHERE verification_id=p_verification;
+ UPDATE users SET verification_status=CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,
+ verification_reviewer_id=p_admin,verification_review_note=p_note,verification_reviewed_at=now() WHERE user_id=p_verification;
  PERFORM log_action(p_admin,'seller_verification_reviewed','seller_verification',p_verification);
 END; $$;
 
@@ -968,24 +953,27 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM orders o JOIN order_items i USING(order_id) WHERE o.order_id=p_order AND o.buyer_id=p_buyer
  AND i.fulfillment_status IN ('awaiting_payment','awaiting_seller_shipment'))
  THEN RAISE EXCEPTION 'Cancellation request allowed only before seller handover in this prototype'; END IF;
- INSERT INTO cancellation_requests(order_id,buyer_id,reason) VALUES(p_order,p_buyer,p_reason) RETURNING request_id INTO v_id;
+ IF p_reason IS NULL OR length(trim(p_reason))=0 THEN RAISE EXCEPTION 'Cancellation reason required'; END IF;
+ UPDATE orders SET cancellation_reason=p_reason,cancellation_status='pending',cancellation_created_at=now()
+ WHERE order_id=p_order AND buyer_id=p_buyer AND cancellation_status IS NULL RETURNING order_id INTO v_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Cancellation was already requested'; END IF;
  RETURN v_id;
 END; $$;
 CREATE FUNCTION review_cancellation(p_admin BIGINT,p_request BIGINT,p_approve BOOLEAN) RETURNS VOID
 LANGUAGE plpgsql SET search_path=owl,pg_temp AS $$
-DECLARE r cancellation_requests; o orders; i order_items; f seller_offers; g BIGINT; paid payments;
+DECLARE r orders; o orders; i order_items; f seller_offers; g BIGINT; paid payments;
 BEGIN
  PERFORM require_role(p_admin,'admin');
- SELECT * INTO r FROM cancellation_requests WHERE request_id=p_request;
+ SELECT * INTO r FROM orders WHERE order_id=p_request;
  IF NOT FOUND THEN RAISE EXCEPTION 'Request not found'; END IF;
  SELECT * INTO i FROM order_items WHERE order_id=r.order_id;
  IF i.condition_snapshot='new' THEN g:=ensure_group(i.variant_id,i.condition_snapshot); END IF;
- SELECT * INTO r FROM cancellation_requests WHERE request_id=p_request FOR UPDATE;
+ SELECT * INTO r FROM orders WHERE order_id=p_request FOR UPDATE;
  SELECT * INTO o FROM orders WHERE order_id=r.order_id FOR UPDATE;
  SELECT * INTO i FROM order_items WHERE order_id=r.order_id FOR UPDATE;
- IF r.status<>'pending' THEN RAISE EXCEPTION 'Request already reviewed'; END IF;
+ IF r.cancellation_status IS DISTINCT FROM 'pending' THEN RAISE EXCEPTION 'Request already reviewed'; END IF;
  IF p_approve AND i.fulfillment_status NOT IN ('awaiting_payment','awaiting_seller_shipment') THEN RAISE EXCEPTION 'Seller already handed over item'; END IF;
- UPDATE cancellation_requests SET status=CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,reviewed_by=p_admin,reviewed_at=now() WHERE request_id=p_request;
+ UPDATE orders SET cancellation_status=CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,cancellation_reviewed_by=p_admin,cancellation_reviewed_at=now() WHERE order_id=p_request;
  IF NOT p_approve THEN RETURN; END IF;
  SELECT * INTO paid FROM payments WHERE order_id=r.order_id AND status='captured';
  IF FOUND THEN
@@ -1014,14 +1002,14 @@ END; $$;
 -- Public product view intentionally omits seller identity and bank data.
 -- Refresh queue timers using refresh_all_queues() in the server's scheduler.
 CREATE VIEW public_market AS
-SELECT p.product_id,p.name AS product_name,p.brand_name AS brand,c.name AS category,
+SELECT p.product_id,p.name AS product_name,p.brand_name AS brand,p.category,
  v.variant_id,v.size,v.color,f.condition,'Owl Pai Lei'::TEXT AS sold_by,
  round(f.asking_price*(1+cfg.platform_fee_percent/100),2) AS display_price,
  cfg.shipping_fee,f.condition_notes,f.defects,
  g.active_since+interval '24 hours' AS turn_expires_at,f.offer_id
 FROM seller_offers f
 JOIN product_variants v ON v.variant_id=f.variant_id JOIN products p USING(product_id)
-JOIN categories c USING(category_id) CROSS JOIN platform_settings cfg
+CROSS JOIN platform_configuration() cfg
 LEFT JOIN queue_groups g ON f.condition='new' AND g.active_offer_id=f.offer_id
 WHERE (f.condition='used' OR g.active_offer_id IS NOT NULL)
  AND f.status='approved' AND f.available_quantity>0 AND p.active AND v.active;
@@ -1084,29 +1072,26 @@ REVOKE ALL ON ALL TABLES IN SCHEMA owl FROM PUBLIC;
 -- Run once after schema/workflows/views in an empty project database.
 
 SET search_path TO owl, public;
-INSERT INTO roles(name) VALUES('buyer'),('seller'),('admin'),('qc');
 INSERT INTO users(full_name,email,phone,password_hash) VALUES
  ('Demo Seller One','seller1@owl.test','DEMO-PHONE-1','8d2d02d1a1339aa33410bb512a44d84c:88ec81aeffc0ea1c228f7f938c33f5ef25a5085b24b56f6ba227fd682c506a47cab150e6fb5458c26c46694b6c5f8bd104e303c5da26006fcb19ee318e0ae35c'),
  ('Demo Seller Two','seller2@owl.test','DEMO-PHONE-2','8d2d02d1a1339aa33410bb512a44d84c:88ec81aeffc0ea1c228f7f938c33f5ef25a5085b24b56f6ba227fd682c506a47cab150e6fb5458c26c46694b6c5f8bd104e303c5da26006fcb19ee318e0ae35c'),
  ('Demo Buyer','buyer@owl.test','DEMO-PHONE-3','8d2d02d1a1339aa33410bb512a44d84c:88ec81aeffc0ea1c228f7f938c33f5ef25a5085b24b56f6ba227fd682c506a47cab150e6fb5458c26c46694b6c5f8bd104e303c5da26006fcb19ee318e0ae35c'),
  ('Demo Admin','admin@owl.test',NULL,'8d2d02d1a1339aa33410bb512a44d84c:88ec81aeffc0ea1c228f7f938c33f5ef25a5085b24b56f6ba227fd682c506a47cab150e6fb5458c26c46694b6c5f8bd104e303c5da26006fcb19ee318e0ae35c'),
  ('Demo QC Staff','qc@owl.test',NULL,'8d2d02d1a1339aa33410bb512a44d84c:88ec81aeffc0ea1c228f7f938c33f5ef25a5085b24b56f6ba227fd682c506a47cab150e6fb5458c26c46694b6c5f8bd104e303c5da26006fcb19ee318e0ae35c');
-INSERT INTO user_roles(user_id,role_id) VALUES(1,1),(1,2),(2,1),(2,2),(3,1),(4,3),(5,4);
+UPDATE users SET is_seller=true WHERE user_id IN (1,2);
+UPDATE users SET is_buyer=false,is_admin=true WHERE user_id=4;
+UPDATE users SET is_buyer=false,is_qc=true WHERE user_id=5;
 UPDATE users SET seller_display_name=full_name,seller_status='active',seller_since=created_at WHERE user_id IN (1,2);
-INSERT INTO seller_bank_accounts(seller_id,bank_name,account_holder,account_number,is_verified) VALUES
- (1,'Fictional Demo Bank','Demo Seller One','DEMO-ACCOUNT-001',true),
- (2,'Fictional Demo Bank','Demo Seller Two','DEMO-ACCOUNT-002',true);
-INSERT INTO seller_verifications(seller_id,id_document_reference,bank_document_reference,status,reviewer_id,review_note,reviewed_at) VALUES
- (1,'demo://seller1-id','demo://seller1-bank','approved',4,'Fictional demo documents only',now()),
- (2,'demo://seller2-id','demo://seller2-bank','approved',4,'Fictional demo documents only',now());
+UPDATE users SET bank_name='Fictional Demo Bank',account_holder=full_name,
+ account_number='DEMO-ACCOUNT-00'||user_id,bank_verified=true,
+ id_document_reference='demo://seller'||user_id||'-id',
+ bank_document_reference='demo://seller'||user_id||'-bank',verification_status='approved',
+ verification_reviewer_id=4,verification_review_note='Fictional demo documents only',
+ verification_submitted_at=now(),verification_reviewed_at=now() WHERE user_id IN (1,2);
 INSERT INTO addresses(user_id,recipient_name,phone,address_line,district,province,postal_code,is_default) VALUES
  (3,'Demo Buyer','DEMO-PHONE-3','Sample address for classroom use','Demo District','Bangkok','10000',true),
  (1,'Demo Seller One','DEMO-PHONE-1','Fictional seller address 1','Demo District','Bangkok','10000',true),
  (2,'Demo Seller Two','DEMO-PHONE-2','Fictional seller address 2','Demo District','Bangkok','10000',true);
-INSERT INTO categories(name) VALUES('Shoes'),('Clothing'),('Accessories');
-INSERT INTO platform_settings(settings_id,platform_fee_percent,shipping_fee,active_turn_hours,note) VALUES(1,10.00,50.00,24,
- 'Prototype proposal: platform fee 10% includes listing and QC; shipping example 50 THB. Update before real use.');
-
 DO $$
 DECLARE n INTEGER; p_id BIGINT; v_size TEXT; cat BIGINT; brand TEXT; label TEXT; sizes TEXT[];
 BEGIN
@@ -1115,8 +1100,8 @@ BEGIN
   brand:=CASE WHEN n=1 THEN 'Adidas' WHEN n=2 THEN 'Nike' ELSE 'Demo Brand' END;
   label:=CASE WHEN n=1 THEN 'Adidas Campus Demo' WHEN n=2 THEN 'Nike Apparel Demo'
     ELSE 'Sample Catalog Product '||lpad(n::TEXT,3,'0') END;
-  INSERT INTO products(category_id,brand_name,name,description,created_by)
-  VALUES(cat,brand,label,'Sample catalog. Replace with the actual 100 products selected by Owl.',4) RETURNING product_id INTO p_id;
+  INSERT INTO products(category,brand_name,name,description,created_by)
+  VALUES((ARRAY['Shoes','Clothing','Accessories'])[cat],brand,label,'Sample catalog. Replace with the actual 100 products selected by Owl.',4) RETURNING product_id INTO p_id;
   INSERT INTO assets(product_id,file_reference) VALUES(p_id,'demo://catalog/'||n);
   sizes:=CASE WHEN cat=1 THEN ARRAY['9','10','11'] WHEN cat=2 THEN ARRAY['S','M','L'] ELSE ARRAY['One size'] END;
   FOREACH v_size IN ARRAY sizes LOOP
@@ -1142,7 +1127,7 @@ DECLARE
   admin_id BIGINT;
   seller_one BIGINT;
   seller_two BIGINT;
-  shoes_id BIGINT;
+  shoes_id TEXT;
   product_key BIGINT;
   variant_key BIGINT;
   offer_key BIGINT;
@@ -1155,7 +1140,7 @@ BEGIN
   SELECT user_id INTO STRICT admin_id FROM users WHERE email='admin@owl.test';
   SELECT user_id INTO STRICT seller_one FROM users WHERE email='seller1@owl.test';
   SELECT user_id INTO STRICT seller_two FROM users WHERE email='seller2@owl.test';
-  SELECT category_id INTO STRICT shoes_id FROM categories WHERE name='Shoes';
+  shoes_id := 'Shoes';
   FOR model IN SELECT * FROM (VALUES
     (1,'Adidas','Adidas Samba Demo',2600),
     (2,'Nike','Nike Dunk Low Demo',2900),
@@ -1169,7 +1154,7 @@ BEGIN
     (10,'New Balance','New Balance 2002R Demo',3900)
   ) AS models(model_no, brand, model_name, base_price)
   LOOP
-    INSERT INTO products(category_id,brand_name,name,description,created_by)
+    INSERT INTO products(category,brand_name,name,description,created_by)
     VALUES(shoes_id,model.brand,model.model_name,'Fictional shoe listing for the classroom demo.',admin_id)
     ON CONFLICT(name) DO NOTHING RETURNING product_id INTO product_key;
     IF NOT FOUND THEN CONTINUE; END IF;
@@ -1199,7 +1184,7 @@ DECLARE
   admin_id BIGINT;
   seller_one BIGINT;
   seller_two BIGINT;
-  clothing_id BIGINT;
+  clothing_id TEXT;
   product_key BIGINT;
   variant_key BIGINT;
   offer_key BIGINT;
@@ -1212,7 +1197,7 @@ BEGIN
   SELECT user_id INTO STRICT admin_id FROM users WHERE email='admin@owl.test';
   SELECT user_id INTO STRICT seller_one FROM users WHERE email='seller1@owl.test';
   SELECT user_id INTO STRICT seller_two FROM users WHERE email='seller2@owl.test';
-  SELECT category_id INTO STRICT clothing_id FROM categories WHERE name='Clothing';
+  clothing_id := 'Clothing';
   FOR model IN SELECT * FROM (VALUES
     (1,'Owl Basics','Owl Classic Cotton Tee Demo',590),
     (2,'Owl Basics','Owl Oversized Tee Demo',690),
@@ -1226,7 +1211,7 @@ BEGIN
     (10,'Owl Basics','Owl Long Sleeve Tee Demo',890)
   ) AS models(model_no, brand, model_name, base_price)
   LOOP
-    INSERT INTO products(category_id,brand_name,name,description,created_by)
+    INSERT INTO products(category,brand_name,name,description,created_by)
     VALUES(clothing_id,model.brand,model.model_name,'Fictional shirt listing for the classroom demo.',admin_id)
     ON CONFLICT(name) DO NOTHING RETURNING product_id INTO product_key;
     IF NOT FOUND THEN CONTINUE; END IF;
