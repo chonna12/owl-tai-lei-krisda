@@ -35,7 +35,7 @@
 
   // ── Sync header with real user data from DB ───────────────────────────────────
 
-  async function updateHeaderUser(user) {
+  function updateHeaderUser(user) {
     const nameEl   = $('demo-status');
     const avatarEl = document.querySelector('.avatar');
 
@@ -47,31 +47,15 @@
       const existing = document.getElementById('user-role-badge');
       if (existing) existing.remove();
 
-      // If user plays both roles, Seller takes priority
-      let isSeller = Boolean(
-        user.canSell ||
-        user.isSeller ||
-        user.role === 'seller' ||
-        (Array.isArray(user.roles) && user.roles.includes('seller'))
-      );
+      // Users play both roles (buy and sell) — Seller takes priority and is displayed
+      const isBuyerOnly = user.role === 'buyer_only' || user.isBuyerOnly === true;
+      const isSeller = !isBuyerOnly;
 
       const badge = document.createElement('span');
       badge.id = 'user-role-badge';
       badge.className = isSeller ? 'role-badge role-badge-seller' : 'role-badge role-badge-buyer';
       badge.textContent = isSeller ? 'Seller' : 'Buyer';
       nameEl.insertAdjacentElement('afterend', badge);
-
-      // If not marked seller yet, probe seller API in case user plays both roles
-      if (!isSeller) {
-        try {
-          const res = await fetch('/api/seller/offers', { credentials: 'same-origin' });
-          if (res.ok) {
-            user.canSell = true;
-            badge.className = 'role-badge role-badge-seller';
-            badge.textContent = 'Seller';
-          }
-        } catch (_) {}
-      }
     } else if (nameEl) {
       nameEl.textContent = 'Signed in';
     }
