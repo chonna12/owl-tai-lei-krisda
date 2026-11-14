@@ -72,7 +72,16 @@
   function updateHeader(user) {
     const nameEl   = document.getElementById('demo-status');
     const avatarEl = document.querySelector('.avatar');
-    if (nameEl)   nameEl.textContent   = (user?.name ?? 'Demo Seller One') + ' · Demo mode';
+    if (nameEl) {
+      nameEl.textContent = (user?.name ?? 'Demo Seller One') + ' · Demo mode';
+      const existing = document.getElementById('user-role-badge');
+      if (existing) existing.remove();
+      const badge = document.createElement('span');
+      badge.id = 'user-role-badge';
+      badge.className = 'role-badge role-badge-seller';
+      badge.textContent = 'Seller';
+      nameEl.insertAdjacentElement('afterend', badge);
+    }
     if (avatarEl) avatarEl.textContent = 'DS';
   }
 
