@@ -1,12 +1,8 @@
 // approve.js — Pure JS logic. HTML lives in index.html, styles in styles.css.
 
-// Demo mode uses the existing authenticated API. There is no Login screen in this classroom build.
+// Uses real user sessions (login.js handles authentication before this runs).
 const $ = id => document.getElementById(id);
 const ICONS = { Shoes: 'icon-shoe', Clothing: 'icon-tee', Accessories: 'icon-bag' };
-let demoSession = null;
-let searchDebounce;
-let catalogController;
-let catalogRequestId = 0;
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
@@ -25,34 +21,42 @@ async function requestJson(url, options = {}) {
 
 const getJson = (url, options = {}) => requestJson(url, options);
 
-// Public fictional seed credentials only. The Backend still validates the password, session and Seller role.
-async function ensureDemoSession() {
-  if (!demoSession) {
-    demoSession = (async () => {
-      try {
-        const { user } = await getJson('/api/me');
-        if (user.email === 'seller1@owl.test' && user.canSell) return user;
-      } catch (error) {
-        if (error.status !== 401) throw error;
-      }
-      const { user } = await requestJson('/api/login', {
-        method: 'POST',
-        body: JSON.stringify({ email: 'seller1@owl.test', password: 'OwlDemo123!' })
-      });
+async function getCurrentUser() {
+  if (window.currentUser && window.currentUser.name) return window.currentUser;
+  if (window.DemoSeller) {
+    try {
+      const user = await window.DemoSeller.ensureDemoSession();
+      window.currentUser = user;
       return user;
-    })().catch(error => { demoSession = null; throw error; });
+    } catch (_) {}
   }
-  return demoSession;
+  try {
+    const data = await getJson('/api/me');
+    window.currentUser = data.user || null;
+  } catch (_) {
+    window.currentUser = null;
+  }
+  return window.currentUser;
 }
 
+// All seller API calls go through here. If the session expired, reload so
+// login.js can re-authenticate the user.
 async function sellerRequest(url, options = {}) {
-  await ensureDemoSession();
-  try { return await requestJson(url, options); }
-  catch (error) {
-    if (error.status !== 401) throw error;
-    demoSession = null;
-    await ensureDemoSession();
-    return requestJson(url, options);
+  if (window.DemoSeller) {
+    return window.DemoSeller.sellerRequest(url, options);
+  }
+  const user = await getCurrentUser();
+  if (!user || !user.canSell) {
+    throw new Error('Only sellers can list items for sale. You are signed in as a Buyer.');
+  }
+  try {
+    return await requestJson(url, options);
+  } catch (error) {
+    if (error.status === 401) {
+      // Session expired — reload triggers login.js to show login screen again
+      window.location.reload();
+    }
+    throw error;
   }
 }
 
@@ -97,10 +101,6 @@ function renderTemplate(templateId) {
   const tpl  = document.getElementById(templateId);
   page.innerHTML = '';
   page.appendChild(tpl.content.cloneNode(true));
-  const notice = document.createElement('p');
-  notice.className = 'demo-mode';
-  notice.textContent = 'Demo mode · Seller One · Offers are saved to PostgreSQL';
-  page.prepend(notice);
   return page;
 }
 
@@ -202,10 +202,23 @@ async function showActionModal(product) {
 
   // Button handlers (re-assign each call so product is current)
   const sellBtn = $('modal-btn-sell');
-  sellBtn.onclick = () => {
-    overlay.classList.remove('is-open');
-    showSellForm(product);
-  };
+  const user = await getCurrentUser();
+  const isSeller = Boolean(user && user.canSell);
+
+  if (!isSeller) {
+    sellBtn.title = 'Only sellers can list items for sale';
+    sellBtn.classList.add('apm-btn-disabled');
+    sellBtn.onclick = () => {
+      alert('Only sellers can list items for sale. Your account is currently a Buyer.');
+    };
+  } else {
+    sellBtn.title = '';
+    sellBtn.classList.remove('apm-btn-disabled');
+    sellBtn.onclick = () => {
+      overlay.classList.remove('is-open');
+      showSellForm(product);
+    };
+  }
   $('modal-btn-buy').onclick = () => alert('Buy feature coming soon!');
 
   overlay.classList.add('is-open');
@@ -213,7 +226,11 @@ async function showActionModal(product) {
 
 // ─── 2. SELL FORM ─────────────────────────────────────────────────────────────
 async function showSellForm(product) {
-  try { await ensureDemoSession(); } catch(error) { alert('Demo account could not sign in: ' + error.message); return; }
+  const user = await getCurrentUser();
+  if (!user || !user.canSell) {
+    alert('Only sellers can list items for sale. Your account is currently a Buyer.');
+    return;
+  }
   const page = renderTemplate('tpl-sell-form');
 
   // Fill product chip
@@ -336,6 +353,11 @@ function showPendingResult(offerId) {
 
 // ─── 4. MY SELL ORDERS PAGE ───────────────────────────────────────────────────
 async function showMyOrders() {
+  const user = await getCurrentUser();
+  if (!user || !user.canSell) {
+    alert('Only sellers have sell orders. Your account is currently a Buyer.');
+    return;
+  }
   const page = renderTemplate('tpl-my-orders');
   page.querySelector('#mo-back').addEventListener('click', () => window.location.reload());
 
@@ -424,15 +446,22 @@ function makeCard(product) {
   const card = document.createElement('button');
   card.type      = 'button';
   card.className = 'card';
+  card.dataset.productId = String(product.product_id);
   card.addEventListener('click', () => showActionModal(product));
 
   const media = document.createElement('div');
   media.className = 'card-media tint-' + (product.product_id % 5);
+  media.dataset.productId = String(product.product_id);
   const label = document.createElement('span');
   label.className   = 'card-label';
   label.textContent = `${product.category} / ${String(product.product_id).padStart(3, '0')}`;
   media.append(label);
   fillMedia(media, product);
+
+  // Wishlist heart button (empty heart by default, filled with pink on click)
+  if (window.Wishlist && typeof window.Wishlist.createButton === 'function') {
+    media.append(window.Wishlist.createButton(product.product_id));
+  }
 
   const body  = document.createElement('div');
   body.className = 'card-body';
@@ -449,44 +478,21 @@ function makeCard(product) {
   return li;
 }
 
-// ─── Home loader ──────────────────────────────────────────────────────────────
-async function loadHome() {
-  const status = $('home-status');
-  if (!status) return;
-  const search = $('catalog-search').value.trim();
-  const category = $('catalog-category').value;
-  const activeFilters = Boolean(search || category);
-  const params = new URLSearchParams();
-  if (search) params.set('q', search);
-  if (category) params.set('category', category);
+// Small connection point for catalog.js; product card behavior stays with this UI.
+window.renderCatalogProducts = products => {
+  $('product-grid').replaceChildren(...products.map(makeCard));
+};
 
-  const requestId = ++catalogRequestId;
-  catalogController?.abort();
-  const controller = new AbortController();
-  catalogController = controller;
-  status.textContent = 'Loading products…';
-  status.classList.remove('is-error');
-  $('clear-filters').hidden = !activeFilters;
+// ─── Logout ───────────────────────────────────────────────────────────────────
+async function handleLogout() {
   try {
-    const query = params.toString();
-    const { products } = await getJson(`/api/products${query ? `?${query}` : ''}`, { signal: controller.signal });
-    if (requestId !== catalogRequestId) return;
-    $('product-grid').replaceChildren(...products.map(makeCard));
-    $('count').textContent = `${products.length} curated items`;
-    status.textContent = products.length ? '' : activeFilters ? 'No products match your search.' : 'No products yet.';
-  } catch (error) {
-    if (controller.signal.aborted || requestId !== catalogRequestId) return;
-    status.textContent = 'Could not load products. Check that the backend is running.';
-    status.classList.add('is-error');
-  } finally {
-    if (catalogController === controller) catalogController = null;
-  }
+    await requestJson('/api/logout', { method: 'POST' });
+  } catch (_) { /* ignore errors — session is gone either way */ }
+  window.location.reload();
 }
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Start the named demo session automatically. Backend role checks remain enabled.
-  ensureDemoSession().catch(error => { const status=$('demo-status'); if(status) status.textContent='Demo sign-in failed: '+error.message; });
   // Modal close handlers (modal is always in the DOM)
   const overlay = $('action-modal-overlay');
   overlay.addEventListener('click', e => {
@@ -499,30 +505,30 @@ document.addEventListener('DOMContentLoaded', () => {
     .forEach(el => {
       if (!el) return;
       el.title = 'View my sell orders';
-      el.addEventListener('click', showMyOrders);
+      el.addEventListener('click', async () => {
+        const user = await getCurrentUser();
+        if (!user || !user.canSell) {
+          alert('Only sellers have sell orders. Your account is currently a Buyer.');
+          return;
+        }
+        showMyOrders();
+      });
     });
 
-  const searchInput = $('catalog-search');
-  searchInput.addEventListener('input', () => {
-    clearTimeout(searchDebounce);
-    catalogRequestId += 1;
-    catalogController?.abort();
-    catalogController = null;
-    const status = $('home-status');
-    status.classList.remove('is-error');
-    status.textContent = 'Searching…';
-    searchDebounce = setTimeout(loadHome, 300);
-  });
-  $('catalog-category').addEventListener('change', () => {
-    clearTimeout(searchDebounce);
-    loadHome();
-  });
-  $('clear-filters').addEventListener('click', () => {
-    clearTimeout(searchDebounce);
-    searchInput.value = '';
-    $('catalog-category').value = '';
-    loadHome();
-  });
+  // Logout button (injected next to avatar)
+  const userDiv = document.querySelector('.user');
+  if (userDiv) {
+    const logoutBtn = document.createElement('button');
+    logoutBtn.id = 'logout-btn';
+    logoutBtn.textContent = 'Sign out';
+    logoutBtn.style.cssText = [
+      'background:none;border:1px solid #eadfce;border-radius:999px',
+      'font:inherit;font-size:12px;color:#a47c60;padding:5px 12px',
+      'cursor:pointer;transition:background .15s',
+    ].join(';');
+    logoutBtn.onmouseover = () => logoutBtn.style.background = '#f5ece0';
+    logoutBtn.onmouseout  = () => logoutBtn.style.background = 'none';
+    logoutBtn.addEventListener('click', handleLogout);
+    userDiv.append(logoutBtn);
+  }
 });
-
-loadHome();

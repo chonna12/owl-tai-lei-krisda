@@ -1,246 +1,284 @@
 erDiagram
   activity_logs {
-    int8 log_id PK
-    int8 actor_id FK
-    int8 order_id FK
-    int8 shipment_id FK
-    int8 group_id FK
-    int8 offer_id FK
-    int8 refund_id FK
-    int8 payout_id FK
-    int8 verification_id FK
-    int8 charge_id FK
-    varchar status
+    bigint log_id PK
+    character_varying_10_ event_source
+    character_varying_60_ event_type
+    bigint actor_id FK
+    bigint order_id FK
+    bigint shipment_id FK
+    bigint group_id FK
+    bigint offer_id FK
+    bigint refund_id FK
+    bigint payout_id FK
+    bigint verification_id FK
+    bigint charge_id FK
+    character_varying_40_ status
+    character_varying_150_ location
+    text note
+    jsonb details
+    character_varying_40_ entity_type
+    bigint entity_id
+    bigint source_record_id
+    timestamp_with_time_zone created_at
   }
   addresses {
-    int8 address_id PK
-    int8 user_id FK
+    bigint address_id PK
+    bigint user_id FK
+    character_varying_100_ recipient_name
+    character_varying_30_ phone
+    text address_line
+    character_varying_100_ district
+    character_varying_100_ province
+    character_varying_15_ postal_code
+    boolean is_default
+    boolean archived
   }
   assets {
-    int8 asset_id PK
-    int8 product_id FK
-    int8 offer_id FK
-    int8 inspection_id FK
-  }
-  cancellation_requests {
-    int8 request_id PK
-    int8 order_id FK
-    int8 buyer_id FK
-    varchar status
-    int8 reviewed_by FK
-  }
-  carts {
-    int8 cart_id PK
-    int8 user_id FK
-    int8 variant_id FK
-  }
-  categories {
-    int8 category_id PK
-    varchar name
+    bigint asset_id PK
+    bigint product_id FK
+    bigint offer_id FK
+    bigint inspection_id FK
+    text file_reference
+    text caption
+    smallint sort_order
+    character_varying_30_ source_table
+    bigint source_record_id
   }
   coupon_redemptions {
-    int8 redemption_id PK
-    int8 coupon_id FK
-    int8 user_id FK
-    int8 order_id FK
+    bigint redemption_id PK
+    bigint coupon_id FK
+    bigint user_id FK
+    bigint order_id FK
+    numeric_12_2_ discount_applied
+    timestamp_with_time_zone redeemed_at
   }
   coupons {
-    int8 coupon_id PK
-    int8 created_by FK
+    bigint coupon_id PK
+    character_varying_40_ code
+    character_varying_10_ discount_type
+    numeric_12_2_ value
+    numeric_12_2_ min_spend
+    timestamp_with_time_zone starts_at
+    timestamp_with_time_zone expires_at
+    integer usage_limit
+    boolean active
+    bigint created_by FK
   }
   notifications {
-    int8 notification_id PK
-    int8 user_id FK
-    int8 order_id FK
-    int8 offer_id FK
+    bigint notification_id PK
+    bigint user_id FK
+    bigint order_id FK
+    bigint offer_id FK
+    character_varying_40_ type
+    text message
+    boolean is_read
+    timestamp_with_time_zone created_at
   }
   order_items {
-    int8 order_item_id PK
-    int8 order_id FK
-    int8 offer_id FK
-    int8 seller_id FK
-    int8 variant_id FK
-    varchar fulfillment_status
+    bigint order_item_id PK
+    bigint order_id FK
+    bigint offer_id FK
+    bigint seller_id FK
+    bigint variant_id FK
+    character_varying_150_ product_name_snapshot
+    character_varying_30_ size_snapshot
+    character_varying_50_ color_snapshot
+    character_varying_10_ condition_snapshot
+    text defects_snapshot
+    smallint quantity
+    numeric_12_2_ unit_price
+    character_varying_30_ fulfillment_status
   }
   orders {
-    int8 order_id PK
-    int8 buyer_id FK
-    varchar status
-    numeric total
-    int8 coupon_id FK
+    bigint order_id PK
+    bigint buyer_id FK
+    character_varying_20_ status
+    numeric_12_2_ item_subtotal
+    numeric_12_2_ platform_fee
+    numeric_12_2_ discount
+    numeric_12_2_ shipping_fee
+    numeric_12_2_ total
+    bigint coupon_id FK
+    timestamp_with_time_zone created_at
+    text cancellation_reason
+    character_varying_20_ cancellation_status
+    bigint cancellation_reviewed_by FK
+    timestamp_with_time_zone cancellation_reviewed_at
+    timestamp_with_time_zone cancellation_created_at
+    timestamp_with_time_zone completed_at
+    character_varying_100_ shipping_recipient_name
+    character_varying_30_ shipping_phone
+    text shipping_address_line
+    character_varying_100_ shipping_district
+    character_varying_100_ shipping_province
+    character_varying_15_ shipping_postal_code
   }
   payments {
-    int8 payment_id PK
-    int8 order_id FK
-    numeric amount
-    varchar status
-    int8 verified_by FK
+    bigint payment_id PK
+    bigint order_id FK
+    numeric_12_2_ amount
+    character_varying_30_ method
+    character_varying_20_ status
+    character_varying_120_ reference
+    bigint verified_by FK
+    timestamp_with_time_zone paid_at
   }
   payout_items {
-    int8 payout_id PK
-    int8 order_item_id PK
-    numeric amount
+    bigint payout_id PK
+    bigint order_item_id PK
+    numeric_12_2_ amount
   }
   payouts {
-    int8 payout_id PK
-    int8 seller_id FK
-    int8 bank_account_id FK
-    numeric amount
-    varchar status
-    int8 created_by FK
-    int8 approved_by FK
-    int8 paid_by FK
-  }
-  platform_settings {
-    int2 settings_id PK
+    bigint payout_id PK
+    bigint seller_id FK
+    bigint bank_account_id FK
+    character_varying_100_ bank_name_snapshot
+    character_varying_100_ account_holder_snapshot
+    character_varying_50_ account_number_snapshot
+    numeric_12_2_ amount
+    character_varying_20_ status
+    bigint created_by FK
+    timestamp_with_time_zone created_at
+    bigint approved_by FK
+    timestamp_with_time_zone approved_at
+    bigint paid_by FK
+    timestamp_with_time_zone paid_at
+    character_varying_120_ transfer_reference
   }
   product_variants {
-    int8 variant_id PK
-    int8 product_id FK
+    bigint variant_id PK
+    bigint product_id FK
+    character_varying_30_ size
+    character_varying_50_ color
+    character_varying_80_ sku
+    boolean active
   }
   products {
-    int8 product_id PK
-    int8 category_id FK
-    varchar name
-    int8 created_by FK
+    bigint product_id PK
+    character_varying_100_ category
+    character_varying_100_ brand_name
+    character_varying_150_ name
+    text description
+    boolean active
+    bigint created_by FK
+    timestamp_with_time_zone created_at
   }
   qc_inspections {
-    int8 inspection_id PK
-    int8 order_item_id FK
-    int8 inspector_id FK
-    int2 seller_score
+    bigint inspection_id PK
+    bigint order_item_id FK
+    bigint inspector_id FK
+    character_varying_10_ result
+    smallint seller_score
+    text notes
+    timestamp_with_time_zone inspected_at
   }
   queue_entries {
-    int8 offer_id PK
-    int8 group_id FK
+    bigint offer_id PK
+    bigint group_id FK
+    bigint position
+    smallint skips_remaining
   }
   queue_groups {
-    int8 group_id PK
-    int8 variant_id FK
-    int8 active_offer_id FK
+    bigint group_id PK
+    bigint variant_id FK
+    character_varying_10_ condition
+    bigint active_offer_id FK
+    timestamp_with_time_zone active_since
+    bigint next_position
   }
   refunds {
-    int8 refund_id PK
-    int8 order_id FK
-    int8 payment_id FK
-    numeric amount
-    varchar status
-    int8 approved_by FK
-    int8 paid_by FK
-  }
-  roles {
-    int2 role_id PK
-    varchar name
-  }
-  seller_bank_accounts {
-    int8 bank_account_id PK
-    int8 seller_id FK
+    bigint refund_id PK
+    bigint order_id FK
+    bigint payment_id FK
+    numeric_12_2_ amount
+    text reason
+    character_varying_20_ status
+    bigint approved_by FK
+    timestamp_with_time_zone approved_at
+    bigint paid_by FK
+    timestamp_with_time_zone paid_at
+    character_varying_120_ transfer_reference
   }
   seller_charges {
-    int8 charge_id PK
-    int8 seller_id FK
-    int8 shipment_id FK
-    numeric amount
-    varchar status
-    int8 recorded_by FK
+    bigint charge_id PK
+    bigint seller_id FK
+    bigint shipment_id FK
+    numeric_12_2_ amount
+    character_varying_30_ reason
+    character_varying_20_ status
+    character_varying_120_ payment_reference
+    bigint recorded_by FK
+    timestamp_with_time_zone paid_at
   }
   seller_offers {
-    int8 offer_id PK
-    int8 seller_id FK
-    int8 variant_id FK
-    numeric asking_price
-    int4 available_quantity
-    varchar status
-    int8 reviewed_by FK
-  }
-  seller_verifications {
-    int8 verification_id PK
-    int8 seller_id FK
-    varchar status
-    int8 reviewer_id FK
+    bigint offer_id PK
+    bigint seller_id FK
+    bigint variant_id FK
+    character_varying_10_ condition
+    text condition_notes
+    text defects
+    numeric_12_2_ asking_price
+    integer available_quantity
+    character_varying_20_ status
+    timestamp_with_time_zone created_at
+    character_varying_10_ review_decision
+    bigint reviewed_by FK
+    text review_reason
+    timestamp_with_time_zone reviewed_at
   }
   sessions {
-    int8 session_id PK
-    int8 user_id FK
+    bigint session_id PK
+    bigint user_id FK
+    character_64_ token_hash
+    timestamp_with_time_zone expires_at
+    timestamp_with_time_zone revoked_at
   }
   shipments {
-    int8 shipment_id PK
-    int8 order_item_id FK
-    varchar status
-    int8 created_by FK
-  }
-  user_roles {
-    int8 user_id PK
-    int2 role_id PK
+    bigint shipment_id PK
+    bigint order_item_id FK
+    character_varying_20_ leg
+    character_varying_80_ carrier
+    character_varying_120_ tracking_number
+    character_varying_20_ status
+    numeric_12_2_ shipping_cost
+    character_varying_10_ payer
+    bigint created_by FK
+    timestamp_with_time_zone shipped_at
+    timestamp_with_time_zone delivered_at
   }
   users {
-    int8 user_id PK
-    varchar status
+    bigint user_id PK
+    character_varying_100_ full_name
+    character_varying_254_ email
+    character_varying_30_ phone
+    text password_hash
+    character_varying_20_ status
+    timestamp_with_time_zone created_at
+    boolean is_buyer
+    boolean is_seller
+    boolean is_admin
+    boolean is_qc
+    character_varying_100_ bank_name
+    character_varying_100_ account_holder
+    character_varying_50_ account_number
+    boolean bank_verified
+    boolean bank_archived
+    text id_document_reference
+    text bank_document_reference
+    character_varying_20_ verification_status
+    bigint verification_reviewer_id FK
+    text verification_review_note
+    timestamp_with_time_zone verification_submitted_at
+    timestamp_with_time_zone verification_reviewed_at
+    character_varying_100_ seller_display_name
+    character_varying_20_ seller_status
+    timestamp_with_time_zone seller_since
   }
   wishlist_items {
-    int8 user_id PK
-    int8 product_id PK
+    bigint user_id PK
+    bigint product_id PK
+    timestamp_with_time_zone added_at
   }
-  users ||--o{ user_roles : "user_id"
-  roles ||--o{ user_roles : "role_id"
-  users ||--o{ sessions : "user_id"
-  users ||--o{ addresses : "user_id"
-  users ||--o{ seller_bank_accounts : "seller_id"
-  users ||--o{ seller_verifications : "seller_id"
-  users ||--o{ seller_verifications : "reviewer_id"
-  categories ||--o{ products : "category_id"
-  users ||--o{ products : "created_by"
-  products ||--o{ product_variants : "product_id"
-  seller_offers ||--o{ queue_groups : "active_offer_id"
-  users ||--o{ carts : "user_id"
-  users ||--o{ seller_offers : "seller_id"
-  product_variants ||--o{ seller_offers : "variant_id"
-  users ||--o{ seller_offers : "reviewed_by"
-  product_variants ||--o{ queue_groups : "variant_id"
-  seller_offers ||--o{ queue_entries : "offer_id"
-  queue_groups ||--o{ queue_entries : "group_id"
-  users ||--o{ wishlist_items : "user_id"
-  products ||--o{ wishlist_items : "product_id"
-  product_variants ||--o{ carts : "variant_id"
-  users ||--o{ coupons : "created_by"
-  users ||--o{ orders : "buyer_id"
-  coupons ||--o{ orders : "coupon_id"
-  orders ||--o{ order_items : "order_id"
-  seller_offers ||--o{ order_items : "offer_id"
-  users ||--o{ order_items : "seller_id"
-  product_variants ||--o{ order_items : "variant_id"
-  coupons ||--o{ coupon_redemptions : "coupon_id"
-  users ||--o{ coupon_redemptions : "user_id"
-  orders ||--o{ coupon_redemptions : "order_id"
-  users ||--o{ cancellation_requests : "buyer_id"
-  users ||--o{ cancellation_requests : "reviewed_by"
-  orders ||--o{ payments : "order_id"
-  users ||--o{ payments : "verified_by"
-  orders ||--o{ cancellation_requests : "order_id"
-  order_items ||--o{ qc_inspections : "order_item_id"
-  users ||--o{ qc_inspections : "inspector_id"
-  order_items ||--o{ shipments : "order_item_id"
-  users ||--o{ shipments : "created_by"
-  users ||--o{ refunds : "approved_by"
-  users ||--o{ refunds : "paid_by"
-  orders ||--o{ refunds : "order_id"
-  payments ||--o{ refunds : "payment_id"
-  users ||--o{ seller_charges : "seller_id"
-  shipments ||--o{ seller_charges : "shipment_id"
-  users ||--o{ seller_charges : "recorded_by"
-  users ||--o{ payouts : "paid_by"
-  qc_inspections ||--o{ assets : "inspection_id"
-  users ||--o{ payouts : "seller_id"
-  seller_bank_accounts ||--o{ payouts : "bank_account_id"
-  users ||--o{ payouts : "created_by"
-  users ||--o{ payouts : "approved_by"
-  payouts ||--o{ payout_items : "payout_id"
-  order_items ||--o{ payout_items : "order_item_id"
-  users ||--o{ notifications : "user_id"
-  orders ||--o{ notifications : "order_id"
-  seller_offers ||--o{ notifications : "offer_id"
-  products ||--o{ assets : "product_id"
-  seller_offers ||--o{ assets : "offer_id"
   users ||--o{ activity_logs : "actor_id"
   orders ||--o{ activity_logs : "order_id"
   shipments ||--o{ activity_logs : "shipment_id"
@@ -248,5 +286,56 @@ erDiagram
   seller_offers ||--o{ activity_logs : "offer_id"
   refunds ||--o{ activity_logs : "refund_id"
   payouts ||--o{ activity_logs : "payout_id"
-  seller_verifications ||--o{ activity_logs : "verification_id"
+  users ||--o{ activity_logs : "verification_id"
   seller_charges ||--o{ activity_logs : "charge_id"
+  users ||--o{ addresses : "user_id"
+  products ||--o{ assets : "product_id"
+  seller_offers ||--o{ assets : "offer_id"
+  qc_inspections ||--o{ assets : "inspection_id"
+  coupons ||--o{ coupon_redemptions : "coupon_id"
+  users ||--o{ coupon_redemptions : "user_id"
+  orders ||--o{ coupon_redemptions : "order_id"
+  users ||--o{ coupons : "created_by"
+  users ||--o{ notifications : "user_id"
+  orders ||--o{ notifications : "order_id"
+  seller_offers ||--o{ notifications : "offer_id"
+  orders ||--o{ order_items : "order_id"
+  seller_offers ||--o{ order_items : "offer_id"
+  users ||--o{ order_items : "seller_id"
+  product_variants ||--o{ order_items : "variant_id"
+  users ||--o{ orders : "buyer_id"
+  coupons ||--o{ orders : "coupon_id"
+  users ||--o{ orders : "cancellation_reviewed_by"
+  orders ||--o{ payments : "order_id"
+  users ||--o{ payments : "verified_by"
+  payouts ||--o{ payout_items : "payout_id"
+  order_items ||--o{ payout_items : "order_item_id"
+  users ||--o{ payouts : "seller_id"
+  users ||--o{ payouts : "bank_account_id"
+  users ||--o{ payouts : "created_by"
+  users ||--o{ payouts : "approved_by"
+  users ||--o{ payouts : "paid_by"
+  products ||--o{ product_variants : "product_id"
+  users ||--o{ products : "created_by"
+  order_items ||--o{ qc_inspections : "order_item_id"
+  users ||--o{ qc_inspections : "inspector_id"
+  seller_offers ||--o{ queue_entries : "offer_id"
+  queue_groups ||--o{ queue_entries : "group_id"
+  product_variants ||--o{ queue_groups : "variant_id"
+  seller_offers ||--o{ queue_groups : "active_offer_id"
+  orders ||--o{ refunds : "order_id"
+  payments ||--o{ refunds : "payment_id"
+  users ||--o{ refunds : "approved_by"
+  users ||--o{ refunds : "paid_by"
+  users ||--o{ seller_charges : "seller_id"
+  shipments ||--o{ seller_charges : "shipment_id"
+  users ||--o{ seller_charges : "recorded_by"
+  users ||--o{ seller_offers : "seller_id"
+  product_variants ||--o{ seller_offers : "variant_id"
+  users ||--o{ seller_offers : "reviewed_by"
+  users ||--o{ sessions : "user_id"
+  order_items ||--o{ shipments : "order_item_id"
+  users ||--o{ shipments : "created_by"
+  users ||--o{ users : "verification_reviewer_id"
+  users ||--o{ wishlist_items : "user_id"
+  products ||--o{ wishlist_items : "product_id"
