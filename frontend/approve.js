@@ -446,15 +446,22 @@ function makeCard(product) {
   const card = document.createElement('button');
   card.type      = 'button';
   card.className = 'card';
+  card.dataset.productId = String(product.product_id);
   card.addEventListener('click', () => showActionModal(product));
 
   const media = document.createElement('div');
   media.className = 'card-media tint-' + (product.product_id % 5);
+  media.dataset.productId = String(product.product_id);
   const label = document.createElement('span');
   label.className   = 'card-label';
   label.textContent = `${product.category} / ${String(product.product_id).padStart(3, '0')}`;
   media.append(label);
   fillMedia(media, product);
+
+  // Wishlist heart button (empty heart by default, filled with pink on click)
+  if (window.Wishlist && typeof window.Wishlist.createButton === 'function') {
+    media.append(window.Wishlist.createButton(product.product_id));
+  }
 
   const body  = document.createElement('div');
   body.className = 'card-body';

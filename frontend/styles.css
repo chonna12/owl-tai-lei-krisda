@@ -576,3 +576,72 @@ a { color: inherit; text-decoration: none; }
   color: var(--brown-mid);
   border: 1px solid var(--line);
 }
+
+/* ════════════════════════════════════════════════════════════════
+   WISHLIST HEART BUTTON
+════════════════════════════════════════════════════════════════ */
+.wishlist-btn {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(234, 223, 206, 0.85);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  z-index: 4;
+  box-shadow: 0 2px 6px rgba(90, 56, 38, 0.08);
+  transition: transform 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275), background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.wishlist-btn:hover {
+  transform: scale(1.12);
+  background: #ffffff;
+  border-color: #caa280;
+  box-shadow: 0 4px 10px rgba(90, 56, 38, 0.16);
+}
+.wishlist-btn:active {
+  transform: scale(0.92);
+}
+.wishlist-btn:focus-visible {
+  outline: 2px solid var(--brown-mid);
+  outline-offset: 2px;
+}
+
+/* SVG Heart Icon */
+.wishlist-icon {
+  width: 17px;
+  height: 17px;
+  fill: transparent;
+  stroke: var(--brown-mid);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: fill 0.22s ease, stroke 0.22s ease, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.wishlist-btn:hover .wishlist-icon {
+  stroke: #ff4081;
+}
+
+/* Filled with Pink state when active */
+.wishlist-btn.is-active {
+  background: #ffffff;
+  border-color: #ffbcd5;
+  box-shadow: 0 2px 8px rgba(255, 64, 129, 0.25);
+}
+.wishlist-btn.is-active .wishlist-icon {
+  fill: #ff4081; /* Pink */
+  stroke: #ff4081;
+  animation: heart-pop 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes heart-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.36); }
+  100% { transform: scale(1); }
+}
