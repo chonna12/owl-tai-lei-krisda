@@ -21,9 +21,24 @@ async function requestJson(url, options = {}) {
 
 const getJson = url => requestJson(url);
 
+async function getCurrentUser() {
+  if (window.currentUser && window.currentUser.name) return window.currentUser;
+  try {
+    const data = await getJson('/api/me');
+    window.currentUser = data.user || null;
+  } catch (_) {
+    window.currentUser = null;
+  }
+  return window.currentUser;
+}
+
 // All seller API calls go through here. If the session expired, reload so
 // login.js can re-authenticate the user.
 async function sellerRequest(url, options = {}) {
+  const user = await getCurrentUser();
+  if (!user || !user.canSell) {
+    throw new Error('Only sellers can list items for sale. You are signed in as a Buyer.');
+  }
   try {
     return await requestJson(url, options);
   } catch (error) {
@@ -177,10 +192,23 @@ async function showActionModal(product) {
 
   // Button handlers (re-assign each call so product is current)
   const sellBtn = $('modal-btn-sell');
-  sellBtn.onclick = () => {
-    overlay.classList.remove('is-open');
-    showSellForm(product);
-  };
+  const user = await getCurrentUser();
+  const isSeller = Boolean(user && user.canSell);
+
+  if (!isSeller) {
+    sellBtn.title = 'Only sellers can list items for sale';
+    sellBtn.classList.add('apm-btn-disabled');
+    sellBtn.onclick = () => {
+      alert('Only sellers can list items for sale. Your account is currently a Buyer.');
+    };
+  } else {
+    sellBtn.title = '';
+    sellBtn.classList.remove('apm-btn-disabled');
+    sellBtn.onclick = () => {
+      overlay.classList.remove('is-open');
+      showSellForm(product);
+    };
+  }
   $('modal-btn-buy').onclick = () => alert('Buy feature coming soon!');
 
   overlay.classList.add('is-open');
@@ -188,6 +216,11 @@ async function showActionModal(product) {
 
 // ─── 2. SELL FORM ─────────────────────────────────────────────────────────────
 async function showSellForm(product) {
+  const user = await getCurrentUser();
+  if (!user || !user.canSell) {
+    alert('Only sellers can list items for sale. Your account is currently a Buyer.');
+    return;
+  }
   const page = renderTemplate('tpl-sell-form');
 
   // Fill product chip
@@ -310,6 +343,11 @@ function showPendingResult(offerId) {
 
 // ─── 4. MY SELL ORDERS PAGE ───────────────────────────────────────────────────
 async function showMyOrders() {
+  const user = await getCurrentUser();
+  if (!user || !user.canSell) {
+    alert('Only sellers have sell orders. Your account is currently a Buyer.');
+    return;
+  }
   const page = renderTemplate('tpl-my-orders');
   page.querySelector('#mo-back').addEventListener('click', () => window.location.reload());
 
@@ -461,7 +499,14 @@ document.addEventListener('DOMContentLoaded', () => {
     .forEach(el => {
       if (!el) return;
       el.title = 'View my sell orders';
-      el.addEventListener('click', showMyOrders);
+      el.addEventListener('click', async () => {
+        const user = await getCurrentUser();
+        if (!user || !user.canSell) {
+          alert('Only sellers have sell orders. Your account is currently a Buyer.');
+          return;
+        }
+        showMyOrders();
+      });
     });
 
   // Logout button (injected next to avatar)

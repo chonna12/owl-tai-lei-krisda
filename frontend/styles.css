@@ -221,6 +221,8 @@ a { color: inherit; text-decoration: none; }
   transition: filter .15s, transform .1s;
 }
 .apm-btn:active      { transform: scale(.97); }
+.apm-btn-disabled    { opacity: 0.45; cursor: not-allowed !important; filter: grayscale(0.5); }
+.apm-btn-disabled:hover { filter: grayscale(0.5) !important; transform: none !important; }
 .apm-btn-sell        { background: var(--brown); color: var(--white); }
 .apm-btn-sell:hover  { filter: brightness(1.15); }
 .apm-btn-buy         { background: var(--hero); color: var(--brown); border: 1.5px solid var(--line); }

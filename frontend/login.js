@@ -36,6 +36,7 @@
   // ── Sync header with real user data from DB ───────────────────────────────────
 
   function updateHeaderUser(user) {
+    window.currentUser = user;
     const nameEl   = $('demo-status');
     const avatarEl = document.querySelector('.avatar');
 
@@ -47,9 +48,9 @@
       const existing = document.getElementById('user-role-badge');
       if (existing) existing.remove();
 
-      // Users play both roles (buy and sell) — Seller takes priority and is displayed
-      const isBuyerOnly = user.role === 'buyer_only' || user.isBuyerOnly === true;
-      const isSeller = !isBuyerOnly;
+      // If user has seller permissions (or plays both roles), Seller is displayed.
+      // If user is not a seller, Buyer is displayed.
+      const isSeller = Boolean(user.canSell || user.isSeller);
 
       const badge = document.createElement('span');
       badge.id = 'user-role-badge';
@@ -71,6 +72,7 @@
   }
 
   function onLoginSuccess(user) {
+    window.currentUser = user;
     updateHeaderUser(user);
     hideOverlay();
     const filters = document.querySelector('.filters');
