@@ -108,14 +108,30 @@ app.post('/api/orders',account,async(req,res)=>{
 
 // Only public catalog fields are returned. Seller identities remain private.
 app.get('/api/products', async (req, res) => {
+  const search = (typeof req.query.q === 'string' ? req.query.q : '').trim().slice(0,100);
+  const category = (typeof req.query.category === 'string' ? req.query.category : '').trim().slice(0,100);
+  const values = [];
+  const filters = ['p.active'];
+
+  if (search) {
+    const escapedSearch = search.replace(/[!%_]/g, '!$&');
+    values.push(`%${escapedSearch}%`);
+    const parameter = `$${values.length}`;
+    filters.push(`(p.name ILIKE ${parameter} ESCAPE '!' OR p.brand_name ILIKE ${parameter} ESCAPE '!' OR c.name ILIKE ${parameter} ESCAPE '!')`);
+  }
+  if (category && category.toLowerCase() !== 'all categories') {
+    values.push(category);
+    filters.push(`lower(c.name) = lower($${values.length})`);
+  }
+
   const {rows} = await pool.query(`
     SELECT p.product_id, p.name, p.brand_name, p.description,
            c.name AS category,
            (SELECT a.file_reference FROM assets a
             WHERE a.product_id=p.product_id ORDER BY a.sort_order,a.asset_id LIMIT 1) AS image
     FROM products p JOIN categories c USING(category_id)
-    WHERE p.active ORDER BY p.product_id
-  `);
+    WHERE ${filters.join(' AND ')} ORDER BY p.product_id
+  `,values);
   res.json({count:rows.length, products:rows});
 });
 

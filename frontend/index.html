@@ -50,11 +50,12 @@
       <h2 class="catalog-title">Explore the catalog</h2>
       <p class="catalog-sub">Find an item, choose your size, then buy or sell.</p>
 
-      <div class="filters" inert>
-        <input class="search-input" type="search" placeholder="Search products or brands…" aria-label="Search products or brands">
-        <select class="category" aria-label="Category">
-          <option>All categories</option><option>Shoes</option><option>Clothing</option><option>Accessories</option>
+      <div class="filters">
+        <input id="catalog-search" class="search-input" type="search" placeholder="Search products or brands…" aria-label="Search products or brands">
+        <select id="catalog-category" class="category" aria-label="Category">
+          <option value="">All categories</option><option value="Shoes">Shoes</option><option value="Clothing">Clothing</option><option value="Accessories">Accessories</option>
         </select>
+        <button id="clear-filters" class="clear-filters" type="button" hidden>Clear filters</button>
         <span id="count" class="count"></span>
       </div>
 

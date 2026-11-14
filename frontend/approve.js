@@ -4,6 +4,9 @@
 const $ = id => document.getElementById(id);
 const ICONS = { Shoes: 'icon-shoe', Clothing: 'icon-tee', Accessories: 'icon-bag' };
 let demoSession = null;
+let searchDebounce;
+let catalogController;
+let catalogRequestId = 0;
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
@@ -20,7 +23,7 @@ async function requestJson(url, options = {}) {
   return data;
 }
 
-const getJson = url => requestJson(url);
+const getJson = (url, options = {}) => requestJson(url, options);
 
 // Public fictional seed credentials only. The Backend still validates the password, session and Seller role.
 async function ensureDemoSession() {
@@ -450,15 +453,33 @@ function makeCard(product) {
 async function loadHome() {
   const status = $('home-status');
   if (!status) return;
+  const search = $('catalog-search').value.trim();
+  const category = $('catalog-category').value;
+  const activeFilters = Boolean(search || category);
+  const params = new URLSearchParams();
+  if (search) params.set('q', search);
+  if (category) params.set('category', category);
+
+  const requestId = ++catalogRequestId;
+  catalogController?.abort();
+  const controller = new AbortController();
+  catalogController = controller;
   status.textContent = 'Loading products…';
+  status.classList.remove('is-error');
+  $('clear-filters').hidden = !activeFilters;
   try {
-    const { products } = await getJson('/api/products');
+    const query = params.toString();
+    const { products } = await getJson(`/api/products${query ? `?${query}` : ''}`, { signal: controller.signal });
+    if (requestId !== catalogRequestId) return;
     $('product-grid').replaceChildren(...products.map(makeCard));
     $('count').textContent = `${products.length} curated items`;
-    status.textContent = products.length ? '' : 'No products yet.';
-  } catch {
+    status.textContent = products.length ? '' : activeFilters ? 'No products match your search.' : 'No products yet.';
+  } catch (error) {
+    if (controller.signal.aborted || requestId !== catalogRequestId) return;
     status.textContent = 'Could not load products. Check that the backend is running.';
     status.classList.add('is-error');
+  } finally {
+    if (catalogController === controller) catalogController = null;
   }
 }
 
@@ -480,6 +501,28 @@ document.addEventListener('DOMContentLoaded', () => {
       el.title = 'View my sell orders';
       el.addEventListener('click', showMyOrders);
     });
+
+  const searchInput = $('catalog-search');
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    catalogRequestId += 1;
+    catalogController?.abort();
+    catalogController = null;
+    const status = $('home-status');
+    status.classList.remove('is-error');
+    status.textContent = 'Searching…';
+    searchDebounce = setTimeout(loadHome, 300);
+  });
+  $('catalog-category').addEventListener('change', () => {
+    clearTimeout(searchDebounce);
+    loadHome();
+  });
+  $('clear-filters').addEventListener('click', () => {
+    clearTimeout(searchDebounce);
+    searchInput.value = '';
+    $('catalog-category').value = '';
+    loadHome();
+  });
 });
 
 loadHome();
