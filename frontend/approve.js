@@ -23,6 +23,13 @@ const getJson = url => requestJson(url);
 
 async function getCurrentUser() {
   if (window.currentUser && window.currentUser.name) return window.currentUser;
+  if (window.DemoSeller) {
+    try {
+      const user = await window.DemoSeller.ensureDemoSession();
+      window.currentUser = user;
+      return user;
+    } catch (_) {}
+  }
   try {
     const data = await getJson('/api/me');
     window.currentUser = data.user || null;
@@ -35,6 +42,9 @@ async function getCurrentUser() {
 // All seller API calls go through here. If the session expired, reload so
 // login.js can re-authenticate the user.
 async function sellerRequest(url, options = {}) {
+  if (window.DemoSeller) {
+    return window.DemoSeller.sellerRequest(url, options);
+  }
   const user = await getCurrentUser();
   if (!user || !user.canSell) {
     throw new Error('Only sellers can list items for sale. You are signed in as a Buyer.');

@@ -225,6 +225,19 @@
   // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
   async function init() {
+    if (window.DemoSeller) return;
+
+    // Auto-detect demoseller.js: if the user removed .example, activate demo seller mode automatically!
+    try {
+      const demoCheck = await fetch('/demoseller.js', { method: 'HEAD' });
+      if (demoCheck.ok) {
+        const script = document.createElement('script');
+        script.src = 'demoseller.js?v=' + Date.now();
+        document.head.appendChild(script);
+        return;
+      }
+    } catch (_) {}
+
     initTabs();
     initLoginForm();
     initRegisterForm();

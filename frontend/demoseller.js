@@ -13,7 +13,7 @@
   'use strict';
 
   // ── Demo credentials (public seed data only) ──────────────────────────────
-  const DEMO_EMAIL    = 'seller1@owl.test';
+  const DEMO_EMAIL = 'seller1@owl.test';
   const DEMO_PASSWORD = 'OwlDemo123!';
 
   // ── Shared session promise (re-used across all calls) ─────────────────────
@@ -21,7 +21,7 @@
 
   // ── Plain JSON fetch ──────────────────────────────────────────────────────
   async function requestJson(url, options = {}) {
-    const res  = await fetch(url, {
+    const res = await fetch(url, {
       ...options,
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', ...options.headers },
@@ -39,7 +39,10 @@
         // 1. Try the existing cookie first (avoids an extra round-trip)
         try {
           const { user } = await requestJson('/api/me');
-          if (user.email === DEMO_EMAIL && user.canSell) return user;
+          if (user.email === DEMO_EMAIL && user.canSell) {
+            window.currentUser = user;
+            return user;
+          }
         } catch (e) {
           if (e.status !== 401) throw e;
         }
@@ -48,6 +51,7 @@
           method: 'POST',
           body: JSON.stringify({ email: DEMO_EMAIL, password: DEMO_PASSWORD }),
         });
+        window.currentUser = user;
         return user;
       })().catch(err => { _session = null; throw err; });
     }
@@ -70,7 +74,7 @@
 
   // ── Update the header user chip ───────────────────────────────────────────
   function updateHeader(user) {
-    const nameEl   = document.getElementById('demo-status');
+    const nameEl = document.getElementById('demo-status');
     const avatarEl = document.querySelector('.avatar');
     if (nameEl) {
       nameEl.textContent = (user?.name ?? 'Demo Seller One') + ' · Demo mode';
@@ -90,7 +94,7 @@
     const overlay = document.getElementById('login-overlay');
     if (!overlay) return;
     overlay.style.transition = 'opacity .2s';
-    overlay.style.opacity    = '0';
+    overlay.style.opacity = '0';
     setTimeout(() => overlay.remove(), 220);
     const filters = document.querySelector('.filters');
     if (filters) filters.removeAttribute('inert');
@@ -100,6 +104,7 @@
   async function init() {
     try {
       const user = await ensureDemoSession();
+      window.currentUser = user;
       updateHeader(user);
       hideLoginOverlay();
     } catch (err) {
